@@ -2,6 +2,7 @@
 
 Executes a validated :class:`Plan`:
 - Runs steps in listed order (dependencies always precede dependents).
+- Continues after failures only for auto-added optional evidence prerequisites.
 - Resolves ``inputs.source_step`` / ``depends_on`` by injecting the referenced
   step's result data into the dependent step's inputs as ``source_result``.
 - Dispatches each step to the right agent via a name->agent registry.
@@ -70,6 +71,8 @@ class PlanExecutor:
             summaries.append(result.summary)
 
             if not result.success:
+                if step.optional:
+                    continue
                 overall_ok = False
                 break
 
@@ -86,12 +89,19 @@ class PlanExecutor:
         if step.intent in _REPORT_FORMAT:
             inputs.setdefault("format", _REPORT_FORMAT[step.intent])
 
-        # Resolve source_step / first dependency into source_result.
+        # Resolve an explicit source_step, otherwise prefer the final dependency.
+        # Auto-added evidence prerequisites are prepended, while the user's
+        # primary result remains the final dependency.
         source_id = inputs.get("source_step")
         if not source_id and step.depends_on:
-            source_id = step.depends_on[0]
+            source_id = step.depends_on[-1]
         if source_id and source_id in results:
             inputs["source_result"] = results[source_id].data
+        inputs["dependency_results"] = {
+            dependency: results[dependency].data
+            for dependency in step.depends_on
+            if dependency in results and results[dependency].success
+        }
 
         return inputs
 

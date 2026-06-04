@@ -88,6 +88,11 @@ class PlanValidator:
                     error=f"intent {step.intent.value} must use {expected.value}, "
                     f"got {step.agent.value}",
                 )
+            if step.optional and not step.inputs.get("auto_prerequisite"):
+                return ValidationResult(
+                    False,
+                    error=f"step {step.step_id} may be optional only when auto-added",
+                )
 
             # dependencies reference prior steps (acyclic by construction)
             for dep in step.depends_on:

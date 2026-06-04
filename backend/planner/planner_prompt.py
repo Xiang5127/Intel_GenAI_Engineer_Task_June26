@@ -67,6 +67,7 @@ def build_planner_prompt(user_query: str, context: dict[str, Any]) -> str:
         "pending_clarification": context.get("pending_clarification"),
         "recent_messages": context.get("recent_messages", [])[-5:],
         "generated_files": context.get("generated_files", []),
+        "available_analyses": context.get("available_analyses", {}),
     }
 
     return f"""You are a planning module for a local video-analysis assistant.
@@ -87,6 +88,10 @@ Rules:
   need a selected video.
 - For multi-step requests, use depends_on and reference prior steps via
   inputs.source_step.
+- For general questions about the selected video's content, use SUMMARIZE_VIDEO
+  and put the user's question in inputs.query.
+- Use SUMMARIZE_CHAT_HISTORY only when the user explicitly asks about the
+  conversation, discussion, or chat history rather than the video.
 - Use the single most specific intent for the analysis; do NOT add redundant
   steps (e.g. for "how many animals" use COUNT_OBJECTS alone, not ANALYZE_OBJECTS
   as well).

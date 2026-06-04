@@ -11,15 +11,13 @@ Design:
 - ``get_summarizer()`` returns the active summarizer; later phases can register
   an ``LLMSummarizer`` without touching callers, the MCP server, or ReportAgent.
 
-# TODO(Phase 7): add LLMSummarizer(Summarizer) backed by the local planner model.
-# TODO(Phase 7): evidence-aware summary that fuses transcript + OCR + objects
-#                (cross-reference spoken content with on-screen text/objects).
-# TODO(Phase 7): user-query-based report generation (tailor sections/slides to
-#                the user's question instead of a fixed template).
+# Local Ollama analysis is selected by default; the deterministic implementation
+# remains the fallback and the normalized downstream contract is unchanged.
 """
 
 from __future__ import annotations
 
+import os
 import time
 from dataclasses import asdict, dataclass, field
 from typing import Any, Optional, Protocol
@@ -89,6 +87,8 @@ class Summarizer(Protocol):
         *,
         video: Optional[dict[str, Any]] = None,
         query: Optional[str] = None,
+        source_result: Optional[dict[str, Any]] = None,
+        chat_messages: Optional[list[dict[str, Any]]] = None,
     ) -> SummaryBundle:
         ...
 
@@ -96,6 +96,23 @@ class Summarizer(Protocol):
 def _truncate(text: str, limit: int) -> str:
     text = (text or "").strip()
     return text if len(text) <= limit else text[:limit].rstrip() + "..."
+
+
+def _find_count(value: Any) -> Optional[dict[str, Any]]:
+    if isinstance(value, dict):
+        count = value.get("count")
+        if isinstance(count, dict):
+            return count
+        for item in value.values():
+            found = _find_count(item)
+            if found:
+                return found
+    elif isinstance(value, list):
+        for item in value:
+            found = _find_count(item)
+            if found:
+                return found
+    return None
 
 
 class RuleBasedSummarizer:
@@ -109,15 +126,32 @@ class RuleBasedSummarizer:
         *,
         video: Optional[dict[str, Any]] = None,
         query: Optional[str] = None,
+        source_result: Optional[dict[str, Any]] = None,
+        chat_messages: Optional[list[dict[str, Any]]] = None,
     ) -> SummaryBundle:
         video = video or {}
-        title = "Video Analysis Report"
+        is_chat_summary = bool(chat_messages) and not video
+        title = "Conversation Summary" if is_chat_summary else "Video Analysis Report"
         subtitle = video.get("video_path")
 
         sections: list[ReportSection] = []
         slides: list[Slide] = [
             Slide(title=title, bullets=[b for b in (subtitle,) if b]),
         ]
+
+        if is_chat_summary:
+            history = [
+                f"{message.get('role', 'unknown')}: {_truncate(message.get('content', ''), 500)}"
+                for message in (chat_messages or [])[-20:]
+            ]
+            sections.append(
+                ReportSection(
+                    heading="Conversation",
+                    body="Summary generated from recent chat history.",
+                    bullets=history,
+                )
+            )
+            slides.append(Slide(title="Conversation", bullets=history[:8]))
 
         # Transcript
         transcript = analyses.get("transcript") or {}
@@ -190,6 +224,18 @@ class RuleBasedSummarizer:
                 )
             )
 
+        if source_result:
+            count = _find_count(source_result)
+            if count:
+                count_bullets = [
+                    f"Target: {count.get('target')}",
+                    f"Maximum in one frame: {count.get('max_in_single_frame')}",
+                ]
+                sections.append(
+                    ReportSection(heading="Requested Object Count", bullets=count_bullets)
+                )
+                slides.append(Slide(title="Requested Object Count", bullets=count_bullets))
+
         if not sections:
             sections.append(
                 ReportSection(
@@ -219,14 +265,19 @@ _summarizer: Optional[Summarizer] = None
 
 
 def get_summarizer() -> Summarizer:
-    """Return the active summarizer (RuleBased in Phase 6)."""
+    """Return the configured local summarizer."""
     global _summarizer
     if _summarizer is None:
-        _summarizer = RuleBasedSummarizer()
+        if os.environ.get("ANALYSIS_BACKEND", "ollama").lower() == "rule_based":
+            _summarizer = RuleBasedSummarizer()
+        else:
+            from backend.services.ollama_summarizer import OllamaSummarizer
+
+            _summarizer = OllamaSummarizer()
     return _summarizer
 
 
-def set_summarizer(summarizer: Summarizer) -> None:
+def set_summarizer(summarizer: Optional[Summarizer]) -> None:
     """Override the active summarizer (e.g. inject LLMSummarizer in Phase 7)."""
     global _summarizer
     _summarizer = summarizer

@@ -24,67 +24,22 @@ Config (env):
 
 from __future__ import annotations
 
-import json
-import os
-import urllib.error
-import urllib.request
 from typing import Any, Optional
 
-DEFAULT_HOST = "http://localhost:11434"
-DEFAULT_MODEL = "qwen2.5:3b"
-DEFAULT_TIMEOUT = 120.0  # generous: covers cold-start model load on CPU
+from backend.services.ollama_service import (
+    DEFAULT_HOST,
+    DEFAULT_MODEL,
+    DEFAULT_TIMEOUT,
+    OllamaClient,
+    OllamaError,
+    OllamaUnavailable,
+)
 
 _SYSTEM_PROMPT = (
     "You are a strict JSON planning module. You convert the user's request into a "
     "single JSON execution plan that matches the provided schema. Output JSON ONLY "
     "with no markdown, no code fences, and no commentary."
 )
-
-
-class OllamaError(RuntimeError):
-    """Ollama returned an error or unparseable response."""
-
-
-class OllamaUnavailable(OllamaError):
-    """The Ollama server could not be reached."""
-
-
-def _extract_json(text: str) -> str:
-    """Return the first balanced ``{...}`` block in ``text`` (defensive parse)."""
-    text = (text or "").strip()
-    if text.startswith("```"):
-        # strip ```json ... ``` fences
-        text = text.strip("`")
-        if text.lower().startswith("json"):
-            text = text[4:]
-        text = text.strip()
-
-    start = text.find("{")
-    if start == -1:
-        raise OllamaError(f"no JSON object found in response: {text[:200]!r}")
-
-    depth = 0
-    in_str = False
-    escape = False
-    for i in range(start, len(text)):
-        ch = text[i]
-        if in_str:
-            if escape:
-                escape = False
-            elif ch == "\\":
-                escape = True
-            elif ch == '"':
-                in_str = False
-        else:
-            if ch == '"':
-                in_str = True
-            elif ch == "{":
-                depth += 1
-            elif ch == "}":
-                depth -= 1
-                if depth == 0:
-                    return text[start : i + 1]
-    raise OllamaError("unbalanced JSON braces in response")
 
 
 class OllamaPlannerModel:
@@ -96,10 +51,10 @@ class OllamaPlannerModel:
         model: Optional[str] = None,
         timeout: Optional[float] = None,
     ) -> None:
-        self.host = (host or os.environ.get("OLLAMA_HOST", DEFAULT_HOST)).rstrip("/")
-        self.model = model or os.environ.get("OLLAMA_MODEL", DEFAULT_MODEL)
-        self.timeout = timeout or float(os.environ.get("OLLAMA_TIMEOUT", DEFAULT_TIMEOUT))
-        self._available: Optional[bool] = None
+        self._client = OllamaClient(host=host, model=model, timeout=timeout)
+        self.host = self._client.host
+        self.model = self._client.model
+        self.timeout = self._client.timeout
 
     @property
     def name(self) -> str:
@@ -108,15 +63,7 @@ class OllamaPlannerModel:
     # ------------------------------------------------------------------ #
     def is_available(self) -> bool:
         """Return True if the Ollama server responds (cached after first probe)."""
-        if self._available is not None:
-            return self._available
-        try:
-            req = urllib.request.Request(f"{self.host}/api/tags", method="GET")
-            with urllib.request.urlopen(req, timeout=min(self.timeout, 5.0)) as resp:
-                self._available = resp.status == 200
-        except (urllib.error.URLError, OSError, ValueError):
-            self._available = False
-        return self._available
+        return self._client.is_available()
 
     # ------------------------------------------------------------------ #
     def generate(self, prompt: str, user_query: str, context: dict[str, Any]) -> str:
@@ -124,37 +71,9 @@ class OllamaPlannerModel:
         if not self.is_available():
             raise OllamaUnavailable(f"Ollama not reachable at {self.host}")
 
-        payload = {
-            "model": self.model,
-            "stream": False,
-            "format": "json",
-            "options": {"temperature": 0, "num_predict": 512},
-            "messages": [
-                {"role": "system", "content": _SYSTEM_PROMPT},
-                {"role": "user", "content": prompt},
-            ],
-        }
-        data = json.dumps(payload).encode("utf-8")
-        req = urllib.request.Request(
-            f"{self.host}/api/chat",
-            data=data,
-            headers={"Content-Type": "application/json"},
-            method="POST",
+        result = self._client.chat_json(
+            _SYSTEM_PROMPT, prompt, num_predict=512, repair_retries=0
         )
-        try:
-            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
-                body = json.loads(resp.read().decode("utf-8"))
-        except urllib.error.URLError as exc:
-            self._available = False
-            raise OllamaUnavailable(f"Ollama request failed: {exc}") from exc
-        except (OSError, ValueError) as exc:
-            raise OllamaError(f"Ollama request failed: {exc}") from exc
+        import json
 
-        content = (body.get("message") or {}).get("content", "")
-        if not content:
-            raise OllamaError("empty response content from Ollama")
-
-        # Validate it is JSON (raise to trigger fallback if not).
-        raw = _extract_json(content)
-        json.loads(raw)  # parse check
-        return raw
+        return json.dumps(result)

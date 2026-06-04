@@ -82,6 +82,7 @@ class PlanStep(BaseModel):
     agent: Agent
     inputs: dict[str, Any] = Field(default_factory=dict)
     depends_on: list[str] = Field(default_factory=list)
+    optional: bool = False
 
 
 class Plan(BaseModel):

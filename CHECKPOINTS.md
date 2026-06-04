@@ -134,8 +134,7 @@ All commands assume the repository root `e:\Intel Task` and that the `backend` p
   - `python -m backend.scripts.report_smoke`
   - Expect: a PDF and PPTX produced under `backend/outputs/reports/` and recorded as generated files.
 - **Known issues / limitations:**
-  - Summarization is **rule-based**, not LLM. Interface is in place for a future `LLMSummarizer`.
-  - TODO markers exist for Phase 7+: LLM-based summary, evidence-aware summary (transcript + OCR + objects), user-query-based reports.
+  - Real OpenVINO object detection and OCR models remain separate required work.
 
 ---
 
@@ -160,7 +159,6 @@ All commands assume the repository root `e:\Intel Task` and that the `backend` p
 - **Known issues / limitations:**
   - LLM plans vary even at `temperature=0`; tests assert the expected intent is **present**, not strictly first.
   - First request after a cold start is slow (model load), hence the 120s default timeout.
-  - `SUMMARIZE_CHAT_HISTORY` intent is routed but the summary itself is still rule-based.
   - Multi-turn clarification stitching is minimal (a pending question is persisted; the next message is planned fresh).
 
 ---
@@ -186,3 +184,20 @@ All commands assume the repository root `e:\Intel Task` and that the `backend` p
   - Backend startup remains manual during development.
   - The current proto has no session-list or generated-file-history RPC, so the UI resumes one locally cached active session.
   - Real OpenVINO object detection and OCR remain required follow-up work after frontend-led integration testing.
+
+---
+
+## Phase 9 — Real Local LLM Analysis
+- **Status:** Implemented
+- **Summary:** Added a shared local Ollama transport, evidence-aware structured
+  summaries, real chat-history summaries, automatic evidence prerequisites,
+  query-aware reports, and grounded final-answer synthesis. Analysis remains
+  local and falls back to deterministic output when Ollama fails.
+- **Interfaces:** gRPC proto, MCP boundaries, and SQLite schema are unchanged.
+- **Env:** `ANALYSIS_BACKEND` (`ollama` default | `rule_based`),
+  `ANALYSIS_MODEL` (defaults to `OLLAMA_MODEL`), and `ANALYSIS_TIMEOUT`
+  (defaults to `OLLAMA_TIMEOUT`).
+- **Verification:**
+  - `python -m unittest discover -s backend/tests -v`
+  - `python -m backend.scripts.llm_analysis_smoke`
+  - Existing planner and report smoke tests remain supported.

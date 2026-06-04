@@ -68,7 +68,7 @@ Local Tools / Models (ffmpeg/OpenCV, Whisper, OpenVINO, OCR, ReportLab/python-pp
 
 0. **Skeleton (this phase)** — structure, proto, schema, outputs, README.
 1. Storage + Session + ContextBuilder + CLI smoke test.
-2. gRPC server skeleton (dummy SendMessage).
+2. gRPC server and persisted chat/session transport.
 3. Video MCP server (metadata / audio / frames).
 4. Transcription MCP + agent (local Whisper).
 5. Vision MCP + agent (objects / OCR / graphs, OpenVINO).
@@ -92,6 +92,60 @@ python -m pip install -r backend/requirements.txt
 ollama pull qwen2.5:3b          # one-time; or set PLANNER_BACKEND=heuristic to skip the LLM
 python -m backend.main serve --address 127.0.0.1:50051
 ```
+
+Ollama also produces evidence-aware summaries, query-specific reports,
+chat-history summaries, and grounded final answers. To keep LLM planning while
+using deterministic analysis output, set `ANALYSIS_BACKEND=rule_based`.
+
+Optional analysis overrides:
+```powershell
+$env:ANALYSIS_MODEL="qwen2.5:3b"  # defaults to OLLAMA_MODEL
+$env:ANALYSIS_TIMEOUT="120"       # defaults to OLLAMA_TIMEOUT
+```
+
+### Verify backend
+```powershell
+python -m unittest discover -s backend/tests -v
+python -m backend.scripts.llm_planner_smoke
+python -m backend.scripts.llm_analysis_smoke
+python -m backend.scripts.report_smoke
+```
+
+### Quick end-to-end test
+
+From the repository root, install dependencies and prepare the local model once:
+```powershell
+python -m pip install -r backend/requirements.txt
+ollama pull qwen2.5:3b
+```
+
+Make sure Ollama is running, then start the backend:
+```powershell
+python -m backend.main serve --address 127.0.0.1:50051
+```
+
+Keep that terminal open. In a second terminal, start the desktop frontend:
+```powershell
+cd frontend
+npm install
+npm run tauri dev
+```
+
+In the app:
+1. Select `test_folder/test_video.mp4`.
+2. Send `Summarize the video`.
+3. Send `What is the main point?`.
+4. Send `Create a PDF report with the key points`.
+5. Confirm the generated PDF appears and opens from the files panel.
+
+For deterministic testing without Ollama analysis:
+```powershell
+$env:PLANNER_BACKEND="heuristic"
+$env:ANALYSIS_BACKEND="rule_based"
+python -m backend.main serve --address 127.0.0.1:50051
+```
+
+Stop the backend or frontend with `Ctrl+C`.
 
 ### Run frontend
 Start the backend first, then in another terminal:

@@ -6,8 +6,10 @@ Generates PDF/PPTX deliverables from a *normalized* ``report_data`` /
 Source of the bundle (in priority order):
 1. Explicit ``report_data`` / ``slide_data`` in ``inputs`` (e.g. passed from a
    previous SummaryAgent step by the PlanExecutor).
-2. The latest stored ``summary`` analysis for the current video.
-3. Built on demand via :class:`SummaryAgent`.
+2. A normalized bundle from ``source_result``.
+3. The latest stored ``summary`` analysis for the current video when no
+   query-specific content was requested.
+4. Built on demand via :class:`SummaryAgent`.
 
 The agent is agnostic to whether the summary was produced by rules or an LLM; it
 only depends on the normalized structure.
@@ -88,12 +90,18 @@ class ReportAgent(BaseAgent):
                 "report_data": inputs["report_data"],
                 "slide_data": inputs["slide_data"],
             }
+        source_result = inputs.get("source_result") or {}
+        if source_result.get("report_data") and source_result.get("slide_data"):
+            return {
+                "report_data": source_result["report_data"],
+                "slide_data": source_result["slide_data"],
+            }
 
         if not video_id:
             return None
 
         # 2. Latest stored summary.
-        if not inputs.get("force_summary"):
+        if not inputs.get("force_summary") and not inputs.get("query") and not source_result:
             row = self.db.get_latest_analysis(video_id, "summary")
             if row:
                 return json.loads(row["result_json"])
@@ -101,7 +109,9 @@ class ReportAgent(BaseAgent):
         # 3. Build on demand via SummaryAgent.
         summary_agent = SummaryAgent(self.mcp, self.db)
         result = await summary_agent.handle(
-            "SUMMARIZE", {"query": inputs.get("query")}, context
+            "SUMMARIZE_VIDEO",
+            {"query": inputs.get("query"), "source_result": source_result},
+            context,
         )
         if not result.success:
             return None

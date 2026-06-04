@@ -1,8 +1,7 @@
 """gRPC server skeleton for the Intel Local Video AI MVP (Phase 2).
 
-Implements the four ``VideoAIService`` methods over the Phase 1 storage layer:
-``CreateSession``, ``UploadVideo``, ``SendMessage`` (dummy response), and
-``GetChatHistory``. No planner / agents / MCP yet.
+Implements the four ``VideoAIService`` methods over the storage layer and local
+planner/agent/MCP pipeline.
 
 The generated stubs (``video_ai_pb2`` / ``video_ai_pb2_grpc``) use flat imports,
 so the generated directory is placed on ``sys.path`` before importing them.

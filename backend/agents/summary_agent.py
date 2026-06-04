@@ -1,12 +1,11 @@
 """SummaryAgent (Phase 6).
 
-Reads the stored analyses for the current video (transcript / objects / OCR /
-graphs) and produces a *normalized* ``report_data`` + ``slide_data`` bundle via
-the active :class:`Summarizer` (rule-based in Phase 6, LLM later). The agent is
-summarizer-agnostic; swapping in an LLM summarizer requires no change here.
+Reads stored video evidence or chat history and produces a normalized
+``report_data`` + ``slide_data`` bundle via the active :class:`Summarizer`.
+The default summarizer uses local Ollama with a deterministic fallback.
 
-It does not call MCP tools (summarization is local/CPU-light); it only reads/
-writes storage and delegates to the summarization service.
+It does not call MCP tools; it only reads/writes storage and delegates to the
+local summarization service.
 """
 
 from __future__ import annotations
@@ -30,27 +29,50 @@ class SummaryAgent(BaseAgent):
         inputs: dict[str, Any],
         context: dict[str, Any],
     ) -> AgentResult:
+        is_chat_summary = intent == "SUMMARIZE_CHAT_HISTORY"
         video = self._current_video(context)
         video_id = (video or {}).get("video_id")
-        if not video_id:
+        if not video_id and not is_chat_summary:
             return self._fail(intent, "no video selected to summarize")
 
-        analyses = self._load_analyses(video_id)
-        if not any(analyses.values()):
+        analyses = self._load_analyses(video_id) if video_id else {}
+        session_id = context.get("session_id")
+        chat_messages = (
+            self.db.get_recent_messages(session_id, 0)
+            if is_chat_summary and session_id
+            else context.get("recent_messages", []) if is_chat_summary else None
+        )
+        if not any(analyses.values()) and not chat_messages:
             return self._fail(
                 intent,
-                "no analyses found; run transcription and/or visual analysis first",
+                "no evidence found to summarize",
             )
 
         summarizer = summarization.get_summarizer()
-        bundle = summarizer.summarize(analyses, video=video, query=inputs.get("query"))
+        source_result = inputs.get("source_result")
+        dependency_results = inputs.get("dependency_results") or {}
+        if dependency_results:
+            source_result = {
+                "primary": source_result or {},
+                "dependencies": dependency_results,
+            }
+        bundle = summarizer.summarize(
+            analyses,
+            video=None if is_chat_summary else video,
+            query=inputs.get("query"),
+            source_result=source_result,
+            chat_messages=chat_messages,
+        )
 
-        self.db.save_video_analysis(video_id, ANALYSIS_TYPE, json.dumps(bundle.to_dict()))
+        if video_id and not is_chat_summary:
+            self.db.save_video_analysis(video_id, ANALYSIS_TYPE, json.dumps(bundle.to_dict()))
 
         n_sections = len(bundle.report_data.get("sections", []))
         n_slides = len(bundle.slide_data.get("slides", []))
+        metadata = bundle.report_data.get("metadata", {})
+        fallback = " using deterministic fallback" if metadata.get("fallback") else ""
         summary = (
-            f"Summary built by '{summarizer.name}' summarizer: "
+            f"Summary built by '{summarizer.name}' summarizer{fallback}: "
             f"{n_sections} report section(s), {n_slides} slide(s)."
         )
         return self._ok(intent, summary, bundle.to_dict())

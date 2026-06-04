@@ -5,11 +5,11 @@ Run from the repository root so that the ``backend`` package is importable:
     # Phase 1 storage/session smoke test
     python -m backend.main smoke --db backend/storage/smoke.db --reset
 
-    # Phase 2 gRPC server
+    # gRPC server
     python -m backend.main serve --address 127.0.0.1:50051
 
 The ``smoke`` command exercises the storage layer directly; ``serve`` starts the
-gRPC server (dummy SendMessage response — planner/agents arrive later).
+gRPC server with the local planner, agents, MCP tools, and analysis pipeline.
 """
 
 from __future__ import annotations

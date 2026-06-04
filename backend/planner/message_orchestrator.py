@@ -22,6 +22,7 @@ from backend.planner.plan_executor import PlanExecutor
 from backend.planner.plan_validator import PlanValidator
 from backend.planner.planner_service import PlannerService
 from backend.session.session_manager import SessionManager
+from backend.services.response_synthesis import ResponseSynthesizer
 from backend.storage.db import Database
 
 _ANALYSIS_TYPES = ("transcript", "objects", "ocr", "graphs", "summary")
@@ -43,12 +44,14 @@ class MessageOrchestrator:
         self._validator = PlanValidator()
         self._executor = PlanExecutor(self._mcp, db)
         self._clarify = ClarificationManager(db)
+        self._responses = ResponseSynthesizer()
 
     async def handle_message(self, session_id: str, message: str) -> dict[str, Any]:
         self._sessions.save_chat_message(session_id, "user", message)
 
         context = self._context.build(session_id)
         context["has_analyses"] = self._has_analyses(context)
+        context["available_analyses"] = self._available_analyses(context)
 
         raw_plan = self._planner.generate_plan(message, context)
         result = self._validator.validate(raw_plan, context)
@@ -70,11 +73,13 @@ class MessageOrchestrator:
         # Valid, executable plan: clear any stale clarification and run it.
         self._clarify.clear(session_id)
         execution = await self._executor.execute(result.plan, context)
-
-        for f in execution.generated_files:
-            self._db.save_generated_file(
-                session_id, f.get("file_type", "file"), f["file_path"],
-                video_id=(context.get("current_video") or {}).get("video_id"),
+        if execution.success:
+            execution.assistant_message = self._responses.synthesize(
+                message,
+                context,
+                execution.step_results,
+                execution.generated_files,
+                execution.assistant_message,
             )
 
         self._sessions.save_chat_message(session_id, "assistant", execution.assistant_message)
@@ -90,6 +95,16 @@ class MessageOrchestrator:
             return False
         vid = video["video_id"]
         return any(self._db.get_latest_analysis(vid, t) for t in _ANALYSIS_TYPES)
+
+    def _available_analyses(self, context: dict[str, Any]) -> dict[str, bool]:
+        video = context.get("current_video")
+        if not video:
+            return {analysis_type: False for analysis_type in _ANALYSIS_TYPES}
+        video_id = video["video_id"]
+        return {
+            analysis_type: bool(self._db.get_latest_analysis(video_id, analysis_type))
+            for analysis_type in _ANALYSIS_TYPES
+        }
 
     @staticmethod
     def _response(

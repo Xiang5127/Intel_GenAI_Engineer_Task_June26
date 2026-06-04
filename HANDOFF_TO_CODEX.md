@@ -73,6 +73,10 @@ ollama pull qwen2.5:3b
 python -m backend.main serve --address 127.0.0.1:50051
 ```
 - To run **without** the LLM (deterministic, no Ollama needed): set `PLANNER_BACKEND=heuristic`.
+- To keep LLM planning but use deterministic summaries and answers: set
+  `ANALYSIS_BACKEND=rule_based`.
+- Analysis uses `ANALYSIS_MODEL` and `ANALYSIS_TIMEOUT` when set, otherwise it
+  inherits `OLLAMA_MODEL` and `OLLAMA_TIMEOUT`.
 - DB path defaults to `backend/storage/video_ai.db`; generated files go under `backend/outputs/`.
 
 ## 6. How to Run or Test MCP Servers
@@ -85,6 +89,8 @@ python -m backend.scripts.vision_smoke        --video "test_folder/test_video.mp
 python -m backend.scripts.report_smoke
 python -m backend.scripts.planner_smoke       --video "test_folder/test_video.mp4"   # deterministic e2e
 python -m backend.scripts.llm_planner_smoke                                          # LLM routing + fallback
+python -m backend.scripts.llm_analysis_smoke                                         # live analysis + answer
+python -m unittest discover -s backend/tests -v
 python -m backend.scripts.grpc_smoke                                                 # all 4 RPCs
 ```
 
@@ -114,7 +120,9 @@ Agents live in `backend/agents/`; all extend `BaseAgent` and return an `AgentRes
 
 - **TranscriptionAgent** — extract audio -> transcribe (faster-whisper) -> cache/persist `transcript`. Intent: `TRANSCRIBE_VIDEO`.
 - **VisionAgent** — sample frames -> object detection / counting / OCR / graph detection -> persist `objects`/`ocr`/`graphs`. Intents: `ANALYZE_OBJECTS`, `COUNT_OBJECTS`, `ANALYZE_OCR`, `DETECT_GRAPHS`.
-- **SummaryAgent** — build normalized `report_data`/`slide_data` via the `Summarizer` interface (rule-based today). Intents: `SUMMARIZE_VIDEO`, `SUMMARIZE_CHAT_HISTORY`.
+- **SummaryAgent** — build normalized evidence-aware `report_data`/`slide_data`
+  via local Ollama, with deterministic fallback. Intents: `SUMMARIZE_VIDEO`,
+  `SUMMARIZE_CHAT_HISTORY`.
 - **ReportAgent** — consume normalized data -> generate PDF/PPTX via the report MCP -> record generated files. Intents: `GENERATE_PDF`, `GENERATE_PPTX`.
 - **ClarificationAgent** — surface a clarification question. Intent: `CLARIFY`.
 

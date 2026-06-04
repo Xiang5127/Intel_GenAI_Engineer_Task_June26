@@ -3,7 +3,7 @@
 Produces a raw JSON execution plan from a user query + context. The actual
 "thinking" lives behind a swappable :class:`PlannerModel` adapter:
 
-- ``HeuristicPlannerModel`` (default): a deterministic, keyword-based stub that
+- ``HeuristicPlannerModel``: a deterministic, keyword-based fallback that
   emits valid plans for the supported intents. No LLM, fully offline.
 - A real local LLM adapter can be dropped in later via ``set_planner_model``
   without changing the validator, executor, or gRPC layer.
@@ -85,8 +85,14 @@ class HeuristicPlannerModel:
             primary = _step("step_1", "ANALYZE_OCR", "vision_agent", {}, [])
         elif any(k in q for k in ("object", "what is shown", "what's shown", "what do you see", "detect")):
             primary = _step("step_1", "ANALYZE_OBJECTS", "vision_agent", {}, [])
+        elif "summar" in q and any(k in q for k in ("chat", "conversation", "discussion")):
+            primary = _step(
+                "step_1", "SUMMARIZE_CHAT_HISTORY", "summary_agent", {"query": user_query}, []
+            )
         elif "summar" in q:
-            primary = _step("step_1", "SUMMARIZE_VIDEO", "summary_agent", {}, [])
+            primary = _step(
+                "step_1", "SUMMARIZE_VIDEO", "summary_agent", {"query": user_query}, []
+            )
 
         # Determine requested export format(s).
         wants_pdf = "pdf" in q
@@ -103,10 +109,15 @@ class HeuristicPlannerModel:
                 # Ambiguous "make a report" -> clarify format.
                 return json.dumps(_clarify("Do you want a PDF report or a PowerPoint presentation?"))
             else:
-                return json.dumps(
-                    _clarify("I can transcribe, analyze objects/OCR/graphs, summarize, or "
-                             "generate a PDF/PPTX. What would you like?")
-                )
+                if _looks_like_video_question(q, has_video):
+                    primary = _step(
+                        "step_1", "SUMMARIZE_VIDEO", "summary_agent", {"query": user_query}, []
+                    )
+                else:
+                    return json.dumps(
+                        _clarify("I can transcribe, analyze objects/OCR/graphs, summarize, or "
+                                 "generate a PDF/PPTX. What would you like?")
+                    )
 
         if primary is not None:
             steps.append(primary)
@@ -142,6 +153,26 @@ def _needs_video(steps: list[dict[str, Any]]) -> bool:
     vid = {"TRANSCRIBE_VIDEO", "SUMMARIZE_VIDEO", "ANALYZE_OBJECTS", "COUNT_OBJECTS",
            "DETECT_GRAPHS", "ANALYZE_OCR"}
     return any(s["intent"] in vid for s in steps)
+
+
+def _looks_like_video_question(query: str, has_video: bool) -> bool:
+    if not has_video:
+        return False
+    return any(
+        marker in query
+        for marker in (
+            "what ",
+            "why ",
+            "how ",
+            "explain",
+            "tell me",
+            "main point",
+            "topic",
+            "happen",
+            "about",
+            "key point",
+        )
+    )
 
 
 def _default_model() -> PlannerModel:
@@ -199,11 +230,97 @@ class PlannerService:
             raw = self._model.generate(prompt, user_query, context)
             json.loads(raw)  # ensure parseable before accepting
             self._last_model_name = self._model.name
-            return raw
+            return _complete_plan(raw, user_query, context)
         except Exception as exc:  # noqa: BLE001 - any failure -> safe fallback
             if not self._enable_fallback or self._fallback is self._model:
                 raise
             _log.warning("planner '%s' failed (%s); falling back to '%s'",
                          self._model.name, exc, self._fallback.name)
             self._last_model_name = self._fallback.name
-            return self._fallback.generate(prompt, user_query, context)
+            return _complete_plan(
+                self._fallback.generate(prompt, user_query, context), user_query, context
+            )
+
+
+def _complete_plan(raw: str, user_query: str, context: dict[str, Any]) -> str:
+    """Deterministically add missing evidence prerequisites and query context."""
+    data = json.loads(raw)
+    steps: list[dict[str, Any]] = data.get("steps", [])
+    if not steps:
+        return raw
+
+    query_intents = {
+        "SUMMARIZE_VIDEO",
+        "SUMMARIZE_CHAT_HISTORY",
+        "GENERATE_PDF",
+        "GENERATE_PPTX",
+    }
+    for step in steps:
+        if step.get("intent") in query_intents:
+            step.setdefault("inputs", {}).setdefault("query", user_query)
+
+    if not context.get("current_video") or any(step.get("intent") == "CLARIFY" for step in steps):
+        return json.dumps(data)
+
+    available = context.get("available_analyses", {})
+    present_intents = {step.get("intent") for step in steps}
+    used_ids = {str(step.get("step_id")) for step in steps}
+    auto_index = 1
+
+    def next_id(label: str) -> str:
+        nonlocal auto_index
+        while f"auto_{label}_{auto_index}" in used_ids:
+            auto_index += 1
+        value = f"auto_{label}_{auto_index}"
+        used_ids.add(value)
+        auto_index += 1
+        return value
+
+    summary_ids = {
+        str(step.get("step_id"))
+        for step in steps
+        if step.get("intent") == "SUMMARIZE_VIDEO"
+    }
+    report_steps = [
+        step for step in steps if step.get("intent") in {"GENERATE_PDF", "GENERATE_PPTX"}
+    ]
+    if report_steps and not summary_ids and all(not step.get("depends_on") for step in report_steps):
+        summary_id = next_id("summary")
+        steps.insert(
+            0,
+            _step(summary_id, "SUMMARIZE_VIDEO", "summary_agent", {"query": user_query}, []),
+        )
+        summary_ids.add(summary_id)
+        for step in report_steps:
+            step["depends_on"] = [summary_id]
+            step.setdefault("inputs", {})["source_step"] = summary_id
+
+    prereqs: list[dict[str, Any]] = []
+    prereq_ids: list[str] = []
+    if summary_ids and not available.get("transcript") and "TRANSCRIBE_VIDEO" not in present_intents:
+        step_id = next_id("transcript")
+        prereqs.append(
+            {
+                **_step(step_id, "TRANSCRIBE_VIDEO", "transcription_agent", {"auto_prerequisite": True}, []),
+                "optional": True,
+            }
+        )
+        prereq_ids.append(step_id)
+    has_visual = any(available.get(key) for key in ("objects", "ocr", "graphs"))
+    visual_intents = {"ANALYZE_OBJECTS", "COUNT_OBJECTS", "DETECT_GRAPHS", "ANALYZE_OCR"}
+    if summary_ids and not has_visual and not present_intents.intersection(visual_intents):
+        step_id = next_id("vision")
+        prereqs.append(
+            {
+                **_step(step_id, "ANALYZE_OBJECTS", "vision_agent", {"auto_prerequisite": True}, []),
+                "optional": True,
+            }
+        )
+        prereq_ids.append(step_id)
+
+    for step in steps:
+        if step.get("intent") == "SUMMARIZE_VIDEO":
+            existing = list(step.get("depends_on") or [])
+            step["depends_on"] = [*prereq_ids, *[item for item in existing if item not in prereq_ids]]
+    data["steps"] = [*prereqs, *steps]
+    return json.dumps(data)

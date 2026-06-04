@@ -10,7 +10,7 @@ protobuf==6.33.6
 mcp==1.27.2
 
 # --- Phase 3: video processing ---
-opencv-python==4.13.0.92
+opencv-python==4.12.0.88
 imageio-ffmpeg==0.6.0       # bundles ffmpeg binary (system ffmpeg not required)
 # moviepy                   # optional alternative; not currently used
 
@@ -34,6 +34,7 @@ pydantic==2.13.4            # plan schema models + validation
 #   1) install Ollama: https://ollama.com/download
 #   2) ollama pull qwen2.5:3b
 # Env overrides: OLLAMA_HOST, OLLAMA_MODEL, OLLAMA_TIMEOUT, PLANNER_BACKEND=heuristic|ollama
+# Analysis overrides: ANALYSIS_BACKEND=ollama|rule_based, ANALYSIS_MODEL, ANALYSIS_TIMEOUT
 # If Ollama is not running, the planner falls back to the offline heuristic stub.
 
 # NOTE: No cloud SDKs. No LangChain/LangGraph. No vector DB.
