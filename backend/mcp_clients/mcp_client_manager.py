@@ -66,6 +66,7 @@ DEFAULT_SERVERS: dict[str, MCPServerSpec] = {
         name="transcription", module="backend.mcp_servers.transcription_mcp_server"
     ),
     "vision": MCPServerSpec(name="vision", module="backend.mcp_servers.vision_mcp_server"),
+    "report": MCPServerSpec(name="report", module="backend.mcp_servers.report_mcp_server"),
 }
 
 

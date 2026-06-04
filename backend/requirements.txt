@@ -24,8 +24,8 @@ openvino==2026.2.0          # OpenVINO vision runtime (preferred); OpenCV fallba
 # OCR backend optional (pytesseract/easyocr) can be added later.
 
 # --- Phase 6: report generation ---
-# reportlab                 # or: fpdf2
-# python-pptx
+reportlab==4.5.1            # PDF generation (no model, rule-based summary)
+python-pptx==1.0.2          # PPTX generation
 
 # --- Phase 7: planner plan schema validation ---
 # pydantic
