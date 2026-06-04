@@ -5,7 +5,7 @@ and intents, embeds the compact session context, and demands a JSON-only plan
 matching ``plan_schema``. The stub planner ignores the prompt text, but a real
 LLM adapter (Phase 7+) feeds this string to the model.
 
-# TODO(Phase 7): feed this prompt to a local LLM adapter and parse its JSON output.
+Consumed by ``OllamaPlannerModel`` (local LLM); the heuristic stub ignores it.
 """
 
 from __future__ import annotations
@@ -15,7 +15,20 @@ from typing import Any
 
 from backend.planner.plan_schema import Agent, Intent
 
-_INTENT_LINES = "\n".join(f"- {i.value}" for i in Intent)
+_INTENT_DESCRIPTIONS = {
+    Intent.TRANSCRIBE_VIDEO: "transcribe the spoken audio of the video",
+    Intent.SUMMARIZE_VIDEO: "produce a summary of the video content",
+    Intent.ANALYZE_OBJECTS: "detect and list the objects shown in the video",
+    Intent.COUNT_OBJECTS: "count how many of a SPECIFIC object appear; use this for "
+    "\"how many X\" / \"count the X\" questions and put X in inputs.target",
+    Intent.DETECT_GRAPHS: "detect charts/graphs/plots in the video",
+    Intent.ANALYZE_OCR: "read on-screen / written text from the video",
+    Intent.SUMMARIZE_CHAT_HISTORY: "summarize the conversation so far",
+    Intent.GENERATE_PDF: "create a PDF report (report_agent)",
+    Intent.GENERATE_PPTX: "create a PowerPoint presentation (report_agent)",
+    Intent.CLARIFY: "ask the user a clarifying question when the request is ambiguous",
+}
+_INTENT_LINES = "\n".join(f"- {i.value}: {_INTENT_DESCRIPTIONS[i]}" for i in Intent)
 _AGENT_LINES = "\n".join(f"- {a.value}" for a in Agent)
 
 _SCHEMA_EXAMPLE = """{
@@ -29,6 +42,20 @@ _SCHEMA_EXAMPLE = """{
   ],
   "clarification_question": null
 }"""
+
+_MORE_EXAMPLES = """More examples:
+
+User: "Transcribe the video"
+{"confidence": 0.95, "steps": [{"step_id": "step_1", "intent": "TRANSCRIBE_VIDEO",
+ "agent": "transcription_agent", "inputs": {}, "depends_on": []}],
+ "clarification_question": null}
+
+User: "Make a report" (no format given)
+{"confidence": 0.45, "steps": [{"step_id": "step_1", "intent": "CLARIFY",
+ "agent": "clarification_agent",
+ "inputs": {"question": "Do you want a PDF report or a PowerPoint presentation?"},
+ "depends_on": []}],
+ "clarification_question": "Do you want a PDF report or a PowerPoint presentation?"}"""
 
 
 def build_planner_prompt(user_query: str, context: dict[str, Any]) -> str:
@@ -60,9 +87,17 @@ Rules:
   need a selected video.
 - For multi-step requests, use depends_on and reference prior steps via
   inputs.source_step.
+- Use the single most specific intent for the analysis; do NOT add redundant
+  steps (e.g. for "how many animals" use COUNT_OBJECTS alone, not ANALYZE_OBJECTS
+  as well).
 
 Schema example:
 {_SCHEMA_EXAMPLE}
+
+{_MORE_EXAMPLES}
+
+Output rules: respond with ONE JSON object only. No markdown, no code fences, no
+explanation. Every step's "agent" must match its "intent".
 
 Session context (JSON):
 {json.dumps(compact_context, indent=2)}

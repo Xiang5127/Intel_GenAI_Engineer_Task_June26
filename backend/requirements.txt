@@ -28,6 +28,12 @@ reportlab==4.5.1            # PDF generation (no model, rule-based summary)
 python-pptx==1.0.2          # PPTX generation
 
 # --- Phase 7: planner plan schema validation ---
-pydantic==2.13.4            # plan schema models + validation (heuristic planner stub; LLM later)
+pydantic==2.13.4            # plan schema models + validation
+# Local LLM planner uses Ollama via stdlib urllib (no pip dependency).
+# One-time setup (then fully offline):
+#   1) install Ollama: https://ollama.com/download
+#   2) ollama pull qwen2.5:3b
+# Env overrides: OLLAMA_HOST, OLLAMA_MODEL, OLLAMA_TIMEOUT, PLANNER_BACKEND=heuristic|ollama
+# If Ollama is not running, the planner falls back to the offline heuristic stub.
 
 # NOTE: No cloud SDKs. No LangChain/LangGraph. No vector DB.

@@ -11,17 +11,21 @@ Produces a raw JSON execution plan from a user query + context. The actual
 ``generate_plan(user_query, context) -> str`` returns raw JSON (string), exactly
 as an LLM would, so the validator path is identical for stub and LLM.
 
-# TODO(Phase 7): implement LLMPlannerModel(PlannerModel) using the local model;
-#                feed build_planner_prompt() and parse the JSON response.
+The local LLM adapter (``OllamaPlannerModel``) is the default primary; the
+heuristic stub remains as an automatic offline fallback.
 """
 
 from __future__ import annotations
 
 import json
+import logging
+import os
 import re
 from typing import Any, Optional, Protocol
 
 from backend.planner.planner_prompt import build_planner_prompt
+
+_log = logging.getLogger(__name__)
 
 # Words that hint at a specific object-count target ("how many X").
 _COUNT_RE = re.compile(r"how many\s+([a-z][a-z\s]*?)(?:\s+(?:are|is|in|on|appear)|\?|$)", re.I)
@@ -140,20 +144,66 @@ def _needs_video(steps: list[dict[str, Any]]) -> bool:
     return any(s["intent"] in vid for s in steps)
 
 
-class PlannerService:
-    """Builds the prompt and delegates plan generation to a PlannerModel."""
+def _default_model() -> PlannerModel:
+    """Pick the primary planner model from env (default: Ollama LLM).
 
-    def __init__(self, model: Optional[PlannerModel] = None) -> None:
-        self._model = model or HeuristicPlannerModel()
+    ``PLANNER_BACKEND=heuristic`` forces the offline stub; anything else (default)
+    uses the local Ollama LLM, which itself falls back to the heuristic if the
+    server is unreachable (handled by PlannerService).
+    """
+    backend = os.environ.get("PLANNER_BACKEND", "ollama").lower()
+    if backend == "heuristic":
+        return HeuristicPlannerModel()
+    # Imported lazily so the heuristic path has no hard dependency on the adapter.
+    from backend.planner.ollama_planner_model import OllamaPlannerModel
+
+    return OllamaPlannerModel()
+
+
+class PlannerService:
+    """Builds the prompt and delegates plan generation to a PlannerModel.
+
+    Uses ``model`` as the primary planner and transparently falls back to
+    ``fallback`` (the offline heuristic stub by default) if the primary raises or
+    returns unparseable JSON. This keeps the app fully functional offline even
+    when the LLM server is down.
+    """
+
+    def __init__(
+        self,
+        model: Optional[PlannerModel] = None,
+        fallback: Optional[PlannerModel] = None,
+        enable_fallback: bool = True,
+    ) -> None:
+        self._model = model or _default_model()
+        self._fallback = fallback or HeuristicPlannerModel()
+        self._enable_fallback = enable_fallback
+        self._last_model_name = self._model.name
 
     @property
     def model_name(self) -> str:
-        return self._model.name
+        """Name of the model that produced the most recent plan."""
+        return self._last_model_name
 
     def set_model(self, model: PlannerModel) -> None:
         self._model = model
 
     def generate_plan(self, user_query: str, context: dict[str, Any]) -> str:
-        """Return a raw JSON plan string for ``user_query``."""
+        """Return a raw JSON plan string for ``user_query``.
+
+        Tries the primary model first; on any failure (unreachable LLM, invalid
+        JSON) falls back to the heuristic stub so a valid plan is always returned.
+        """
         prompt = build_planner_prompt(user_query, context)
-        return self._model.generate(prompt, user_query, context)
+        try:
+            raw = self._model.generate(prompt, user_query, context)
+            json.loads(raw)  # ensure parseable before accepting
+            self._last_model_name = self._model.name
+            return raw
+        except Exception as exc:  # noqa: BLE001 - any failure -> safe fallback
+            if not self._enable_fallback or self._fallback is self._model:
+                raise
+            _log.warning("planner '%s' failed (%s); falling back to '%s'",
+                         self._model.name, exc, self._fallback.name)
+            self._last_model_name = self._fallback.name
+            return self._fallback.generate(prompt, user_query, context)

@@ -18,10 +18,14 @@ import time
 from pathlib import Path
 
 from backend.planner.message_orchestrator import MessageOrchestrator
-from backend.planner.plan_validator import PlanValidator
-from backend.planner.planner_service import PlannerService
+from backend.planner.planner_service import HeuristicPlannerModel, PlannerService
 from backend.session.session_manager import SessionManager
 from backend.storage.db import Database
+
+# This is the deterministic end-to-end EXECUTION test, so it pins the heuristic
+# planner (no LLM nondeterminism). LLM intent routing is covered separately by
+# backend.scripts.llm_planner_smoke.
+_HEURISTIC = PlannerService(model=HeuristicPlannerModel(), enable_fallback=False)
 
 _T0 = time.time()
 
@@ -32,9 +36,8 @@ def log(msg: str) -> None:
 
 def _show_plan(query: str, has_video: bool) -> None:
     """Print the raw plan the heuristic planner emits (no execution)."""
-    planner = PlannerService()
     ctx = {"current_video": {"video_id": "v1"} if has_video else None}
-    raw = planner.generate_plan(query, ctx)
+    raw = _HEURISTIC.generate_plan(query, ctx)
     plan = json.loads(raw)
     intents = [s["intent"] for s in plan["steps"]]
     log(f"  plan[{query!r}] conf={plan['confidence']} intents={intents} "
@@ -43,7 +46,7 @@ def _show_plan(query: str, has_video: bool) -> None:
 
 async def _run(db: Database, video_path: str) -> None:
     sessions = SessionManager(db)
-    orch = MessageOrchestrator(db, sessions)
+    orch = MessageOrchestrator(db, sessions, planner=_HEURISTIC)
 
     session = sessions.create_session(title="Phase 7 smoke")
     sid = session["session_id"]
