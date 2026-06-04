@@ -1,0 +1,48 @@
+video_mcp_server
+
+extract_audio(video_path) -> audio_path
+extract_frames(video_path, interval_seconds) -> frame_paths
+get_video_metadata(video_path) -> duration, fps, resolution
+
+ffmpeg / OpenCV
+
+// ----------------------------
+
+transcription_mcp_server
+
+transcribe_audio(audio_path) -> transcript
+
+Whisper tiny/base/small
+faster-whisper or HF Transformers
+optional OpenVINO Whisper later
+
+*Local speech-to-text for short videos.
+
+// ----------------------------
+
+vision_mcp_server
+
+detect_objects(frame_paths) -> object detections
+count_objects(frame_paths, target) -> count estimate
+run_ocr(frame_paths) -> detected text
+detect_graphs(frame_paths) -> graph candidates
+caption_frames(frame_paths) -> optional frame descriptions
+
+OpenVINO vision runtime
+OCR library
+simple graph heuristics
+
+*Object detection on sampled frames.
+*Prefer small model that can run on CPU.
+
+// ----------------------------
+
+report_mcp_server
+
+generate_pdf_report(report_data) -> file_path
+generate_pptx_report(slide_data) -> file_path
+
+ReportLab / fpdf2
+python-pptx
+
+

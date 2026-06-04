@@ -1,0 +1,33 @@
+"How many animals are in the video? Export the answer as PDF."
+
+Plan: 
+{
+  "confidence": 0.92,
+  "steps": [
+    {
+      "step_id": "step_1",
+      "intent": "COUNT_OBJECTS",
+      "agent": "vision_agent",
+      "inputs": {
+        "target": "animals"
+      },
+      "depends_on": []
+    },
+    {
+      "step_id": "step_2",
+      "intent": "GENERATE_PDF",
+      "agent": "report_agent",
+      "inputs": {
+        "title": "Animal Count Report",
+        "source_step": "step_1"
+      },
+      "depends_on": ["step_1"]
+    }
+  ],
+  "clarification_question": null
+}
+
+Execution: 
+VisionAgent counts animals
+  ↓
+ReportAgent generates PDF from result

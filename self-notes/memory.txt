@@ -1,0 +1,99 @@
+We are buiding MVP, no need complex RAG or vector storage, 
+just do simple SQLite session storage:
+*No vector database.
+*No embedding search.
+*No semantic memory.
+*No complex RAG.
+
+SQLite session storage
++
+deterministic context builder
++
+planner LLM receives compact current context
+
+Planner (router) don't know: 
+- which video is currently selected
+- whether transcript already exists
+- whether frames were already analyzed
+- what the user asked earlier
+- whether a PDF/PPT was already generated
+- whether the last assistant message asked a clarification question
+
+So we need to build context: 
+User query
+ ↓
+Backend receives query
+ ↓
+Save user message
+ ↓
+ContextBuilder loads relevant session state
+ ↓
+Planner LLM gets:
+   - user query
+   - current video info
+   - recent chat history
+   - existing analysis status
+   - available agents/intents
+ ↓
+Planner outputs JSON plan
+
+We only need 4 type of memories: 
+1. Chat history
+role: user / assistant
+content
+timestamp
+session_id
+
+2. Current session state
+session_id
+current_video_id
+pending_clarification
+last_plan_json
+
+3. Video analysis cache
+video_id
+video_path
+transcript
+frame_summary
+objects_json
+ocr_json
+graph_json
+
+4. Generated file records
+video_id
+file_type
+file_path
+created_at
+
+Context Builder: 
+generate a compact context JSON for the planner LLM (inject into its prompt)
+- Include last 8 to 12 chat messages.
+- Include current video analysis status, not full transcript.
+- Include transcript only when user asks summary/report.
+- Include full chat history only when user asks "discussion so far".
+- Include generated file list.
+- Include pending clarification if exists.
+
+example: 
+{
+  "session_id": "s_001",
+  "current_video": {
+    "video_id": "v_001",
+    "file_path": "sample_inputs/demo.mp4",
+    "has_transcript": true,
+    "has_visual_analysis": false,
+    "has_graph_analysis": false
+  },
+  "recent_messages": [
+    {
+      "role": "user",
+      "content": "Transcribe the video"
+    },
+    {
+      "role": "assistant",
+      "content": "Transcript generated."
+    }
+  ],
+  "pending_clarification": null,
+  "generated_files": []
+}

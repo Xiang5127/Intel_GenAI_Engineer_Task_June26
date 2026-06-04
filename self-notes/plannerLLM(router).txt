@@ -1,0 +1,131 @@
+The LLM (Planner/Router)
+Natural language query + context
+→ structured JSON execution plan
+*Never execute anything, 
+*only outputs JSON
+
+Example User query and expected intent: 
+"Transcribe the video"
+→ TRANSCRIBE
+
+"What objects are shown?"
+→ VISION_OBJECTS
+
+"Are there any graphs?"
+→ VISION_GRAPHS
+
+"Create a PowerPoint"
+→ GENERATE_PPTX
+
+"Generate a PDF"
+→ GENERATE_PDF
+
+"Summarize our discussion so far"
+→ CHAT_HISTORY_SUMMARY
+
+// ----------------------------
+
+We could use enum for intents: 
+class Intent(Enum):
+    TRANSCRIBE = "transcribe"
+    SUMMARY_VIDEO = "summary_video"
+    VISION_OBJECTS = "vision_objects"
+    VISION_GRAPHS = "vision_graphs"
+    GENERATE_PDF = "generate_pdf"
+    GENERATE_PPTX = "generate_pptx"
+    CHAT_HISTORY_SUMMARY = "chat_history_summary"
+    CLARIFY = "clarify"
+
+// ----------------------------
+
+Then, the LLM will generate a JSON plan: 
+"""
+You are a task planner for a local video analysis desktop application.
+
+Convert the user query into a JSON execution plan.
+
+Available agents:
+1. transcription_agent
+   - use for transcription or speech-to-text
+2. vision_agent
+   - use for objects, animals, people, visual scene, graphs, charts, OCR
+3. summary_agent
+   - use for summarizing transcript, visual findings, or chat history
+4. report_agent
+   - use for PDF or PowerPoint generation
+5. clarification_agent
+   - use when the request is ambiguous
+
+Rules:
+- A query may require multiple steps.
+- Output valid JSON only.
+- Do not invent agents.
+- Do not invent intents.
+- Use multiple steps when needed.
+- If the user asks for a report, include a report generation step.
+- If the user asks a visual question and report generation, first analyze visuals, then generate report.
+- If confidence is below 0.7, ask clarification.
+
+Allowed intents:
+- TRANSCRIBE_VIDEO
+- SUMMARIZE_VIDEO
+- ANALYZE_OBJECTS
+- COUNT_OBJECTS
+- DETECT_GRAPHS
+- ANALYZE_OCR
+- SUMMARIZE_CHAT_HISTORY
+- GENERATE_PDF
+- GENERATE_PPTX
+- CLARIFY
+
+Current context:
+"{context_json}"
+
+User query:
+"{user_query}"
+
+Return JSON in this schema:
+{
+  "confidence": 0.0,
+  "steps": [
+    {
+      "step_id": "step_1",
+      "intent": "...",
+      "agent": "...",
+      "inputs": {},
+      "depends_on": []
+    }
+  ],
+  "clarification_question": null
+}
+"""
+
+// ----------------------------
+
+Then, we validate the JSON plan: 
+We could do this via pydantic models
+1. Is it valid JSON?
+2. Does it match schema?
+3. Are intents allowed?
+4. Are agents allowed?
+5. Are dependencies valid?
+6. Are there circular dependencies?
+7. Is confidence high enough?
+8. Does task require video but no video exists?
+9. Does report step have a source?
+10. Does CLARIFY contain a question?
+
+If anything is invalid --> perform elicitation:
+1. Planner generates JSON.
+2. Validator checks JSON.
+3. If valid → execute.
+4. If invalid due formatting/schema → ask same planner to repair once.
+5. If still invalid or ambiguous → ask user for clarification.
+
+// ----------------------------
+
+Finally, feed the JSON plan to the executor
+ExecutionPlan
+→ ordered agent calls
+→ step results
+→ final response 

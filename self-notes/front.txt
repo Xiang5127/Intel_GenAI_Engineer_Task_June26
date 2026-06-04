@@ -1,0 +1,40 @@
+1. Select local MP4 file.
+2. Show selected video name/path.
+3. Send selected video path to backend.
+4. Display chat history.
+5. Send user query.
+6. Display assistant response.
+7. Display clarification question if needed.
+8. Display generated PDF/PPTX file path.
+9. Load chat history on startup.
+
+frontend/src/
+  App.tsx
+
+  components/
+    VideoPicker.tsx
+    ChatWindow.tsx
+    MessageBubble.tsx
+    ChatInput.tsx
+    GeneratedFilesPanel.tsx
+    AnalysisStatusPanel.tsx
+    ClarificationPrompt.tsx
+
+  grpc/
+    video_ai_client.ts
+    generated/
+
+Flow: 
+App starts
+  ↓
+Call GetChatHistory()
+  ↓
+User selects MP4
+  ↓
+Call UploadVideo(file_path)
+  ↓
+User sends chat message
+  ↓
+Call SendMessage(session_id, video_id, message)
+  ↓
+Display response / clarification / generated file

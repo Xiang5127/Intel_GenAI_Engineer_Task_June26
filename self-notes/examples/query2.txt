@@ -1,0 +1,22 @@
+"What objects are shown in the video?"
+
+Plan: 
+{
+  "confidence": 0.91,
+  "steps": [
+    {
+      "step_id": "step_1",
+      "intent": "ANALYZE_OBJECTS",
+      "agent": "vision_agent",
+      "inputs": {},
+      "depends_on": []
+    }
+  ],
+  "clarification_question": null
+}
+
+Execution: 
+VisionAgent
+  → video_mcp.extract_frames
+  → vision_mcp.detect_objects
+  → return object list

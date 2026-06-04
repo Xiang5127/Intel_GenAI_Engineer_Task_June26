@@ -1,0 +1,23 @@
+"Transcribe the video."
+
+Plan: 
+{
+  "confidence": 0.95,
+  "steps": [
+    {
+      "step_id": "step_1",
+      "intent": "TRANSCRIBE_VIDEO",
+      "agent": "transcription_agent",
+      "inputs": {},
+      "depends_on": []
+    }
+  ],
+  "clarification_question": null
+}
+
+Execution: 
+TranscriptionAgent
+  → video_mcp.extract_audio
+  → transcription_mcp.transcribe_audio
+  → save transcript
+  → return transcript

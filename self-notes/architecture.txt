@@ -1,0 +1,44 @@
+PlanExecutor = decides which agent runs next.
+Agent = decides which tool it needs.
+MCP Client Manager = gives the agent a working connection to the MCP server.
+MCP Server = actually exposes tools.
+
+Python Backend
+│
+├── gRPC Server
+│
+├── SessionManager
+│   ├── create_session()
+│   ├── get_current_video()
+│   └── set_pending_clarification()
+│
+├── StorageService / SQLite
+│   ├── save_message()
+│   ├── get_recent_messages()
+│   ├── save_video_analysis()
+│   └── get_video_analysis()
+│
+├── ContextBuilder
+│   └── build_context(session_id, user_query)
+│
+├── PlannerService
+│   └── local LLM → JSON plan
+│
+├── PlanValidator
+│   └── code checks
+│
+├── PlanExecutor
+│   └── runs agents
+│
+├── Agents
+│   ├── TranscriptionAgent
+│   ├── VisionAgent
+│   ├── SummaryAgent
+│   └── ReportAgent
+│
+└── MCP Client Manager
+    └── connects to local MCP servers (remain local and separate)
+        ├── video_mcp_server
+        ├── transcription_mcp_server
+        ├── vision_mcp_server (OpenVINO runtime)
+        └── report_mcp_server

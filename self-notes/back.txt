@@ -1,0 +1,98 @@
+1. gRPC server
+2. Router / Validator / Executor
+3. Agents
+4. MCP-style tool servers
+5. Services/model runtimes/storage
+
+Components: 
+- gRPC server
+- Router LLM
+- Plan Validator
+- Elicitation/Clarification Manager
+- Plan Executor
+- Agent registry
+- MCP client manager
+- SQLite storage
+
+FLOW: 
+1. gRPC server receives ChatRequest.
+2. Save user message to SQLite.
+3. ContextBuilder builds compact context.
+4. Planner LLM creates JSON execution plan.
+5. PlanValidator validates the plan with code.
+6. If invalid:
+     a. try one repair, or
+     b. ask clarification.
+7. If valid:
+     PlanExecutor executes steps.
+8. Executor calls agents.
+9. Agents call MCP servers through MCP clients.
+10. MCP servers call tools/models/libraries.
+11. Results are saved.
+12. Assistant response is saved.
+13. gRPC returns ChatResponse to frontend.
+
+Structure: 
+backend/
+  main.py
+  grpc_server.py
+
+  proto/
+    video_ai.proto
+
+  session/
+    session_manager.py
+
+  storage/
+    db.py
+    schema.sql
+
+  context/
+    context_builder.py
+
+  planner/
+    planner_service.py
+    planner_prompt.py
+    plan_schema.py
+    plan_validator.py
+    clarification_manager.py
+    plan_executor.py
+
+  agents/
+    base_agent.py
+    transcription_agent.py
+    vision_agent.py
+    summary_agent.py
+    report_agent.py
+
+  mcp_clients/
+    mcp_client_manager.py
+    video_client.py
+    transcription_client.py
+    vision_client.py
+    report_client.py
+
+  mcp_servers/
+    video_mcp_server.py
+    transcription_mcp_server.py
+    vision_mcp_server.py
+    report_mcp_server.py
+
+  services/
+    video_processing.py
+    speech_to_text.py
+    vision_analysis.py
+    summarization.py
+    report_generator.py
+
+  runtimes/
+    openvino_vision_runtime.py
+    whisper_runtime.py
+    local_llm_runtime.py
+
+  outputs/
+    frames/
+    audio/
+    reports/
+    analysis_json/
+

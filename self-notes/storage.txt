@@ -1,0 +1,28 @@
+We just use normal SQLite database for storage.
+No need for complex databases like MongoDB, ChromaDB etc.
+We just need MVP, and direct connection via code
+
+Chat history:
+- role
+- message
+- timestamp
+
+Video metadata:
+- video_id
+- file_path
+- duration
+- created_at
+
+Analysis:
+- transcript
+- frames
+- visual findings
+- OCR text
+- graph candidates
+- object list
+
+Generated files:
+- video_id
+- file_type
+- file_path
+- created_at

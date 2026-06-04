@@ -1,0 +1,70 @@
+The contract is for frontend to backend communication.
+example: 
+
+syntax = "proto3";
+
+package videoai;
+
+service VideoAIService {
+  rpc CreateSession (CreateSessionRequest) returns (CreateSessionResponse);
+  rpc UploadVideo (UploadVideoRequest) returns (UploadVideoResponse);
+  rpc SendMessage (ChatRequest) returns (ChatResponse);
+  rpc GetChatHistory (HistoryRequest) returns (HistoryResponse);
+}
+
+message CreateSessionRequest {}
+
+message CreateSessionResponse {
+  string session_id = 1;
+}
+
+message UploadVideoRequest {
+  string session_id = 1;
+  string file_path = 2;
+}
+
+message UploadVideoResponse {
+  string video_id = 1;
+  string status = 2;
+}
+
+message ChatRequest {
+  string session_id = 1;
+  string video_id = 2;
+  string message = 3;
+}
+
+message ChatResponse {
+  string response = 1;
+  bool needs_clarification = 2;
+  string clarification_question = 3;
+  string generated_file_path = 4;
+  string generated_file_type = 5;
+}
+
+message HistoryRequest {
+  string session_id = 1;
+}
+
+message HistoryResponse {
+  repeated ChatMessage messages = 1;
+}
+
+message ChatMessage {
+  string role = 1;
+  string content = 2;
+  string created_at = 3;
+}
+
+gRPC is the boundary between UI and backend.
+It should expose user-level actions, not internal architecture.
+we only need 
+- UploadVideo
+- SendMessage
+- GetChatHistory
+
+gRPC does not call: 
+- VisionAgent
+- PlannerLLM
+- MCP server
+- OpenVINO runtime

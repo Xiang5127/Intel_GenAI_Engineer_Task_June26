@@ -1,0 +1,67 @@
+Agents are local backend code modules. 
+They are called by the executor. 
+Each agent owns a category of tasks and calls relevant MCP servers.
+
+Planner decides the steps.
+Executor calls agents.
+Agents know how to perform their task.
+Agents call MCP tools.
+MCP tools run actual local capabilities.
+
+First, we have a MCP Client Manager
+- do all connections
+- Start/connect to local MCP server processes.
+- Maintain MCP client sessions.
+- List available tools.
+- Provide agents with access to specific MCP clients.
+- Handle tool call errors/timeouts.
+- Keep MCP connection setup out of agent code.
+
+// ----------------------------
+
+TranscriptionAgent
+- Ensure audio exists.
+- Call transcription tool.
+- Save transcript.
+- Return transcript.
+
+video_mcp_server
+transcription_mcp_server
+
+// ----------------------------
+
+VisionAgent
+- Extract frames.
+- Detect objects.
+- Count target objects.
+- Detect graph-like frames.
+- Run OCR if needed.
+- Save visual analysis.
+
+video_mcp_server
+vision_mcp_server
+
+// ----------------------------
+
+SummaryAgent
+- Summarize transcript.
+- Summarize visual findings.
+- Summarize chat history.
+- Create structured report content.
+- Create slide outline.
+
+Storage access
+Local LLM runtime or simple summarization service
+Use the same local LLM as PlannerService with a different prompt.
+
+// ----------------------------
+
+ReportAgent
+- Generate PDF report.
+- Generate PPTX presentation.
+- Use previous step result or stored video analysis.
+
+report_mcp_server
+
+// ----------------------------
+

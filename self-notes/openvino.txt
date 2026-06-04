@@ -1,0 +1,21 @@
+MCP server tool
+  ↓
+service
+  ↓
+runtime
+  ↓
+OpenVINO inference
+
+Use OpenVINO for vision/object detection.
+- Easier than OpenVINO LLM.
+- Easier than OpenVINO Whisper.
+- Clearly useful for video frame analysis.
+- Strong Intel relevance.
+
+vision_mcp_server
+  ↓
+VisionService
+  ↓
+OpenVINOVisionRuntime
+  ↓
+OpenVINO object detection model

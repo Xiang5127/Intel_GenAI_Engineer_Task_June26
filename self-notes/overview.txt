@@ -1,0 +1,136 @@
+Frontend:
+  - Display UI
+  - Send video path/query through gRPC
+  - Display response/clarification/generated file
+
+Backend gRPC server:
+  - Receive requests
+  - Store messages
+  - Call planner/validator/executor
+  - Return response
+
+Planner LLM:
+  - Convert natural language into JSON plan
+
+PlanValidator:
+  - Code-based validation of schema, allowed agents, dependencies, context
+
+ClarificationManager:
+  - Converts validation errors/low confidence into user-facing questions
+
+PlanExecutor:
+  - Code-based step runner
+  - Calls agents according to plan
+
+Agents:
+  - Code modules that know how to perform a category of task
+
+MCP Clients:
+  - Used by agents to call MCP servers
+
+MCP Servers:
+  - Local tool servers exposing tools
+
+Tools:
+  - Actual callable capabilities
+
+Models/libraries:
+  - Whisper, vision model, OpenVINO runtime, python-pptx, ReportLab, SQLite
+
+MVP Flow: 
+User selects video
+ ↓
+Frontend sends UploadVideo(video_path)
+ ↓
+Backend creates video_id and stores current_video_id
+ ↓
+User asks query
+ ↓
+Backend saves user message
+ ↓
+ContextBuilder builds current session context
+ ↓
+Planner LLM generates JSON plan
+ ↓
+Validator checks plan
+ ↓
+Executor runs agents
+ ↓
+Agents call MCP servers
+ ↓
+Results saved to SQLite
+ ↓
+Assistant response saved
+ ↓
+Frontend displays response
+
+
+Also need OpenVino runtime for local model inference
+MCP server tool
+  ↓
+service function
+  ↓
+model runtime
+  ↓
+OpenVINO inference
+
+But we don't need OpenVINO on everything (such as router)
+We just need, for example --> on Vision Model MCP
+
+## OpenVINO Integration
+The vision pipeline uses OpenVINO Runtime for local object-detection inference on sampled video frames. 
+The MCP vision server exposes tools such as `detect_objects` and `count_objects`; 
+internally these tools call an OpenVINO runtime wrapper that loads the optimized model, 
+preprocesses frames, runs inference on CPU, and returns structured JSON results to the agent layer.
+The runtime layer is abstracted so transcription and planner LLM models 
+can later be migrated to OpenVINO GenAI or Optimum Intel without changing the frontend, 
+gRPC API, planner, executor, or MCP tool contracts.
+
+// ------
+MVP Must have: 
+
+React + Tauri desktop UI
+gRPC frontend-backend communication
+SQLite persistent chat history
+Session/context builder
+Planner LLM generating JSON plans
+Code-based plan validator
+Code-based plan executor
+TranscriptionAgent
+VisionAgent
+SummaryAgent
+ReportAgent
+Actual local MCP servers
+At least one local AI model
+At least one OpenVINO-backed inference component
+PDF generation
+PPTX generation
+README + setup guide + sample outputs
+
+MVP simplify:
+Planner LLM can be small.
+Graph detection can be heuristic.
+Object counting can be approximate.
+Summary can be basic.
+UI can be simple.
+Storage can be backend-direct instead of MCP if time is tight.
+
+Avoid / Future Plan: 
+Complex LangChain/LangGraph
+Vector database
+Cloud APIs
+Large models
+Real-time video streaming
+Perfect graph understanding
+Perfect UI
+C# launcher before core app works
+
+Description: 
+This MVP is a local AI desktop application built with React + Tauri and a Python gRPC backend. 
+The backend maintains session memory with SQLite, builds context for a local planner LLM, validates the planner’s JSON execution plan, and executes it through deterministic agents. 
+Each agent calls self-developed local MCP servers for video processing, transcription, vision analysis, and report generation. 
+AI inference runs locally using Hugging Face or OpenVINO-backed runtimes, with OpenVINO initially used in the vision pipeline. 
+Generated PDF/PPT outputs and chat history are stored locally.
+
+
+

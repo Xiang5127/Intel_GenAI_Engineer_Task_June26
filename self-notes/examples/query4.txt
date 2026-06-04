@@ -1,0 +1,22 @@
+"Make a report."
+
+Plan: 
+{
+  "confidence": 0.42,
+  "steps": [
+    {
+      "step_id": "step_1",
+      "intent": "CLARIFY",
+      "agent": "clarification_agent",
+      "inputs": {
+        "question": "Do you want a PDF report or a PowerPoint presentation?"
+      },
+      "depends_on": []
+    }
+  ],
+  "clarification_question": "Do you want a PDF report or a PowerPoint presentation?"
+}
+
+Execution: 
+Ask user clarification.
+Store pending_clarification.
