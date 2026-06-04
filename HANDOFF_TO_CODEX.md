@@ -1,6 +1,6 @@
 # HANDOFF TO CODEX
 
-This document hands the **Intel Local Video AI MVP** from Windsurf to Codex. The **backend is complete through Phase 7**; the **React + Tauri frontend (Phase 8) is the next major deliverable** and has not been started. Phase-by-phase detail lives in `CHECKPOINTS.md`.
+This document originally handed the **Intel Local Video AI MVP** from Windsurf to Codex. The **backend is complete through Phase 7** and the **React + Tauri frontend (Phase 8) is now implemented**. Phase-by-phase detail lives in `CHECKPOINTS.md`.
 
 ---
 
@@ -9,7 +9,9 @@ A **fully local, offline** desktop app for analyzing short `.mp4` videos through
 
 ## 2. Current Architecture Summary
 ```txt
-React + Tauri Frontend  (Phase 8 — NOT built)
+React UI
+  | Tauri commands
+Rust tonic gRPC bridge
   | gRPC (proto contract)
 Python Backend Host
   ├── gRPC Server (VideoAIService)     backend/grpc_server.py
@@ -45,9 +47,11 @@ save user message -> build context -> planner generates JSON plan -> validator c
   - JSON planning pipeline: PlannerService (Ollama `qwen2.5:3b` default + heuristic fallback), deterministic PlanValidator and PlanExecutor.
   - PDF/PPTX report generation from a normalized data structure.
   - Smoke tests for every phase under `backend/scripts/`.
+  - React + Tauri desktop frontend with a Rust tonic bridge, MP4 picker, chat,
+    clarification display, generated-files panel, active-session resume, and tests.
 
 ## 4. What Is Incomplete
-- **Frontend (Phase 8):** entirely unbuilt — no React, no Tauri, no gRPC client.
+- **Frontend packaging/lifecycle:** the Python backend is started manually during development; automatic backend packaging and launch are deferred.
 - **Real vision models:** detection/OCR run in **fallback mode** (no IR model bundled). Set `VISION_DET_MODEL` + an OCR backend to enable.
 - **LLM summarization:** summary is still **rule-based**; `LLMSummarizer` is a TODO (the `Summarizer` interface is ready). Same applies to evidence-aware and query-driven reports.
 - **Multi-turn clarification:** a pending question is persisted, but answers are re-planned fresh (no deep stitching).
@@ -134,18 +138,13 @@ Servers live in `backend/mcp_servers/` (FastMCP over stdio). Registered in `back
 - **Frontend communicates with the backend only through gRPC.**
 - **Frontend must NOT call MCP servers directly** — all tool access goes through agents on the backend.
 
-## 12. What Codex Should Implement Next
-Focus is Phase 8 (frontend) and Phase 9 (docs). Do not change the backend architecture.
+## 12. Recommended Next Work
 
-- **React + Tauri frontend** — scaffold the desktop app under `frontend/`.
-- **Frontend gRPC client** — generated from `backend/proto/video_ai.proto`; talk to `127.0.0.1:50051`.
-- **Video picker** — select a local `.mp4` and call `UploadVideo`.
-- **Chat UI** — create/load session, send messages via `SendMessage`, render assistant responses; handle clarification prompts (`clarification_needed` / `clarification_question`).
-- **Generated files panel** — list `GeneratedFile` entries and open them locally.
-- **Frontend–backend integration** — wire session lifecycle, message flow, clarification, and file display end-to-end.
-- **Documentation polish (Phase 9)** — fill README setup/run sections, add sample outputs.
-
-Recommended components (from the blueprint): `VideoPicker`, `ChatWindow`, `ChatInput`, `MessageBubble`, `GeneratedFilesPanel`, `ClarificationPrompt`.
+- Exercise the completed frontend against representative videos and planner flows.
+- Integrate required real OpenVINO object detection and OCR behind the existing
+  runtime/service/MCP/agent boundaries.
+- Fix backend behavior gaps discovered during frontend-led testing.
+- Add sample outputs and final submission documentation.
 
 ---
 

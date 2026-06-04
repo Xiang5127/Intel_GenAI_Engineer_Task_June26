@@ -162,3 +162,27 @@ All commands assume the repository root `e:\Intel Task` and that the `backend` p
   - First request after a cold start is slow (model load), hence the 120s default timeout.
   - `SUMMARIZE_CHAT_HISTORY` intent is routed but the summary itself is still rule-based.
   - Multi-turn clarification stitching is minimal (a pending question is persisted; the next message is planned fresh).
+
+---
+
+## Phase 8 — React + Tauri Frontend
+- **Status:** Implemented
+- **Summary:** Added a standalone React + TypeScript + Tauri v2 desktop frontend.
+  React owns UI and active-session state; a thin Rust `tonic` bridge calls the
+  existing Python gRPC service without changing the proto or backend architecture.
+- **Implemented:**
+  - MP4 picker and upload flow.
+  - Chat history loading, optimistic messages, clarification display, and retry/error states.
+  - Generated PDF/PPTX panel with restricted native file opening.
+  - Versioned local persistence for one active session, selected video, and generated files.
+  - Vendored `protoc`, shared lazy gRPC channel, structured command errors, and endpoint override.
+  - React unit tests, Rust unit tests, application icons, and frontend documentation.
+- **How to manually test:**
+  - Start backend: `$env:PLANNER_BACKEND="heuristic"; python -m backend.main serve`
+  - Start desktop app: `cd frontend; npm run tauri dev`
+  - Verification: `npm test`, `npm run build`, `cargo test --manifest-path src-tauri/Cargo.toml`,
+    `cargo check --manifest-path src-tauri/Cargo.toml`, and `npm run tauri build`.
+- **Known issues / limitations:**
+  - Backend startup remains manual during development.
+  - The current proto has no session-list or generated-file-history RPC, so the UI resumes one locally cached active session.
+  - Real OpenVINO object detection and OCR remain required follow-up work after frontend-led integration testing.

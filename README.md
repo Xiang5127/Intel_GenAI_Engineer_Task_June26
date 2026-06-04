@@ -2,7 +2,7 @@
 
 A **fully local, offline** AI desktop application for analyzing short `.mp4` videos through a chat interface. No cloud APIs, no public MCP servers, no vector DB.
 
-> **Project handoff:** The backend is complete through Phase 7. Development has been handed off to Codex for the React + Tauri frontend (Phase 8) and docs (Phase 9). **Start here:**
+> **Current status:** The backend is complete through Phase 7 and the React + Tauri frontend (Phase 8) is implemented. The next milestone is frontend-led integration testing, followed by real OpenVINO object detection and OCR.
 > - **[`HANDOFF_TO_CODEX.md`](./HANDOFF_TO_CODEX.md)** — architecture, how to run, gRPC/DB contracts, agents/MCP tools, constraints, and what to build next.
 > - **[`CHECKPOINTS.md`](./CHECKPOINTS.md)** — per-phase status, files touched, manual test steps, and known limitations.
 
@@ -18,7 +18,9 @@ A **fully local, offline** AI desktop application for analyzing short `.mp4` vid
 ## Architecture
 
 ```txt
-React + Tauri Frontend
+React UI
+  | Tauri commands
+Rust tonic gRPC bridge
   | gRPC (proto contract)
 Python Backend Host
   ├── gRPC Server          (thin API boundary)
@@ -72,17 +74,15 @@ Local Tools / Models (ffmpeg/OpenCV, Whisper, OpenVINO, OCR, ReportLab/python-pp
 5. Vision MCP + agent (objects / OCR / graphs, OpenVINO).
 6. Report MCP + summary/report agents (PDF / PPTX).
 7. Planner / Validator / Executor (JSON plan pipeline).
-8. React + Tauri frontend.
+8. React + Tauri frontend. **Implemented.**
 9. Docs + sample outputs.
 
 ## Setup
 
-> TODO — filled in as phases land.
-
 ### Prerequisites
-- Python 3.x (installed)
-- Node.js (installed)
-- Rust + Tauri toolchain — **needed for Phase 8 (not yet installed)**
+- Python 3.x
+- Node.js 20+
+- Rust stable, Microsoft C++ Build Tools, and Edge WebView2
 - ffmpeg — preferred for Phase 3 (fallback: OpenCV / `imageio-ffmpeg`)
 
 ### Run backend
@@ -94,7 +94,15 @@ python -m backend.main serve --address 127.0.0.1:50051
 ```
 
 ### Run frontend
-> TODO (Phase 8) — to be implemented by Codex. See **[`HANDOFF_TO_CODEX.md` §12](./HANDOFF_TO_CODEX.md)**.
+Start the backend first, then in another terminal:
+```powershell
+cd frontend
+npm install
+npm run tauri dev
+```
+
+See [`frontend/README.md`](./frontend/README.md) for architecture, verification,
+session persistence, endpoint configuration, and troubleshooting.
 
 ## Example queries
 ```txt
