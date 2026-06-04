@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import os
 import sqlite3
+import threading
 import time
 import uuid
 from pathlib import Path
@@ -38,8 +39,11 @@ class Database:
     def __init__(self, db_path: Optional[os.PathLike[str] | str] = None) -> None:
         self.db_path = Path(db_path) if db_path is not None else DEFAULT_DB_PATH
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        self._conn = sqlite3.connect(str(self.db_path))
+        # check_same_thread=False: the gRPC server dispatches handlers on worker
+        # threads. A lock serializes access so the shared connection stays safe.
+        self._conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
+        self._lock = threading.RLock()
         self._conn.execute("PRAGMA foreign_keys = ON;")
 
     # ------------------------------------------------------------------ #
@@ -49,11 +53,13 @@ class Database:
         """Create tables/indexes from ``schema.sql`` (idempotent)."""
         path = Path(schema_path) if schema_path is not None else SCHEMA_PATH
         sql = path.read_text(encoding="utf-8")
-        self._conn.executescript(sql)
-        self._conn.commit()
+        with self._lock:
+            self._conn.executescript(sql)
+            self._conn.commit()
 
     def close(self) -> None:
-        self._conn.close()
+        with self._lock:
+            self._conn.close()
 
     def __enter__(self) -> "Database":
         return self
@@ -67,32 +73,35 @@ class Database:
     def create_session(self, title: Optional[str] = None) -> dict[str, Any]:
         session_id = _new_id("session")
         ts = _now()
-        self._conn.execute(
-            """
-            INSERT INTO sessions (session_id, title, current_video_id,
-                                  pending_clarification, created_at, updated_at)
-            VALUES (?, ?, NULL, NULL, ?, ?)
-            """,
-            (session_id, title, ts, ts),
-        )
-        self._conn.commit()
+        with self._lock:
+            self._conn.execute(
+                """
+                INSERT INTO sessions (session_id, title, current_video_id,
+                                      pending_clarification, created_at, updated_at)
+                VALUES (?, ?, NULL, NULL, ?, ?)
+                """,
+                (session_id, title, ts, ts),
+            )
+            self._conn.commit()
         return self.get_session(session_id)  # type: ignore[return-value]
 
     def get_session(self, session_id: str) -> Optional[dict[str, Any]]:
-        row = self._conn.execute(
-            "SELECT * FROM sessions WHERE session_id = ?", (session_id,)
-        ).fetchone()
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT * FROM sessions WHERE session_id = ?", (session_id,)
+            ).fetchone()
         return dict(row) if row else None
 
     def set_pending_clarification(
         self, session_id: str, question: Optional[str]
     ) -> None:
-        self._conn.execute(
-            "UPDATE sessions SET pending_clarification = ?, updated_at = ? "
-            "WHERE session_id = ?",
-            (question, _now(), session_id),
-        )
-        self._conn.commit()
+        with self._lock:
+            self._conn.execute(
+                "UPDATE sessions SET pending_clarification = ?, updated_at = ? "
+                "WHERE session_id = ?",
+                (question, _now(), session_id),
+            )
+            self._conn.commit()
 
     # ------------------------------------------------------------------ #
     # chat messages
@@ -104,17 +113,18 @@ class Database:
             raise ValueError(f"invalid role: {role!r}")
         message_id = _new_id("msg")
         ts = _now()
-        self._conn.execute(
-            """
-            INSERT INTO chat_messages (message_id, session_id, role, content, created_at)
-            VALUES (?, ?, ?, ?, ?)
-            """,
-            (message_id, session_id, role, content, ts),
-        )
-        self._conn.execute(
-            "UPDATE sessions SET updated_at = ? WHERE session_id = ?", (ts, session_id)
-        )
-        self._conn.commit()
+        with self._lock:
+            self._conn.execute(
+                """
+                INSERT INTO chat_messages (message_id, session_id, role, content, created_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (message_id, session_id, role, content, ts),
+            )
+            self._conn.execute(
+                "UPDATE sessions SET updated_at = ? WHERE session_id = ?", (ts, session_id)
+            )
+            self._conn.commit()
         return {
             "message_id": message_id,
             "session_id": session_id,
@@ -130,26 +140,27 @@ class Database:
 
         ``limit <= 0`` returns the full history.
         """
-        if limit and limit > 0:
-            rows = self._conn.execute(
-                """
-                SELECT * FROM chat_messages
-                WHERE session_id = ?
-                ORDER BY created_at DESC, rowid DESC
-                LIMIT ?
-                """,
-                (session_id, limit),
-            ).fetchall()
-            rows = list(reversed(rows))
-        else:
-            rows = self._conn.execute(
-                """
-                SELECT * FROM chat_messages
-                WHERE session_id = ?
-                ORDER BY created_at ASC, rowid ASC
-                """,
-                (session_id,),
-            ).fetchall()
+        with self._lock:
+            if limit and limit > 0:
+                rows = self._conn.execute(
+                    """
+                    SELECT * FROM chat_messages
+                    WHERE session_id = ?
+                    ORDER BY created_at DESC, rowid DESC
+                    LIMIT ?
+                    """,
+                    (session_id, limit),
+                ).fetchall()
+                rows = list(reversed(rows))
+            else:
+                rows = self._conn.execute(
+                    """
+                    SELECT * FROM chat_messages
+                    WHERE session_id = ?
+                    ORDER BY created_at ASC, rowid ASC
+                    """,
+                    (session_id,),
+                ).fetchall()
         return [dict(r) for r in rows]
 
     # ------------------------------------------------------------------ #
@@ -166,30 +177,33 @@ class Database:
     ) -> dict[str, Any]:
         video_id = _new_id("video")
         ts = _now()
-        self._conn.execute(
-            """
-            INSERT INTO videos (video_id, session_id, video_path, duration_seconds,
-                                width, height, fps, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (video_id, session_id, video_path, duration_seconds, width, height, fps, ts),
-        )
-        self._conn.commit()
+        with self._lock:
+            self._conn.execute(
+                """
+                INSERT INTO videos (video_id, session_id, video_path, duration_seconds,
+                                    width, height, fps, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (video_id, session_id, video_path, duration_seconds, width, height, fps, ts),
+            )
+            self._conn.commit()
         return self.get_video(video_id)  # type: ignore[return-value]
 
     def get_video(self, video_id: str) -> Optional[dict[str, Any]]:
-        row = self._conn.execute(
-            "SELECT * FROM videos WHERE video_id = ?", (video_id,)
-        ).fetchone()
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT * FROM videos WHERE video_id = ?", (video_id,)
+            ).fetchone()
         return dict(row) if row else None
 
     def set_current_video(self, session_id: str, video_id: str) -> None:
-        self._conn.execute(
-            "UPDATE sessions SET current_video_id = ?, updated_at = ? "
-            "WHERE session_id = ?",
-            (video_id, _now(), session_id),
-        )
-        self._conn.commit()
+        with self._lock:
+            self._conn.execute(
+                "UPDATE sessions SET current_video_id = ?, updated_at = ? "
+                "WHERE session_id = ?",
+                (video_id, _now(), session_id),
+            )
+            self._conn.commit()
 
     def get_current_video(self, session_id: str) -> Optional[dict[str, Any]]:
         session = self.get_session(session_id)
@@ -205,15 +219,16 @@ class Database:
     ) -> dict[str, Any]:
         analysis_id = _new_id("analysis")
         ts = _now()
-        self._conn.execute(
-            """
-            INSERT INTO video_analysis (analysis_id, video_id, analysis_type,
-                                        result_json, created_at)
-            VALUES (?, ?, ?, ?, ?)
-            """,
-            (analysis_id, video_id, analysis_type, result_json, ts),
-        )
-        self._conn.commit()
+        with self._lock:
+            self._conn.execute(
+                """
+                INSERT INTO video_analysis (analysis_id, video_id, analysis_type,
+                                            result_json, created_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (analysis_id, video_id, analysis_type, result_json, ts),
+            )
+            self._conn.commit()
         return {
             "analysis_id": analysis_id,
             "video_id": video_id,
@@ -225,15 +240,16 @@ class Database:
     def get_latest_analysis(
         self, video_id: str, analysis_type: str
     ) -> Optional[dict[str, Any]]:
-        row = self._conn.execute(
-            """
-            SELECT * FROM video_analysis
-            WHERE video_id = ? AND analysis_type = ?
-            ORDER BY created_at DESC, rowid DESC
-            LIMIT 1
-            """,
-            (video_id, analysis_type),
-        ).fetchone()
+        with self._lock:
+            row = self._conn.execute(
+                """
+                SELECT * FROM video_analysis
+                WHERE video_id = ? AND analysis_type = ?
+                ORDER BY created_at DESC, rowid DESC
+                LIMIT 1
+                """,
+                (video_id, analysis_type),
+            ).fetchone()
         return dict(row) if row else None
 
     # ------------------------------------------------------------------ #
@@ -248,15 +264,16 @@ class Database:
     ) -> dict[str, Any]:
         file_id = _new_id("file")
         ts = _now()
-        self._conn.execute(
-            """
-            INSERT INTO generated_files (file_id, session_id, video_id, file_type,
-                                         file_path, created_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            (file_id, session_id, video_id, file_type, file_path, ts),
-        )
-        self._conn.commit()
+        with self._lock:
+            self._conn.execute(
+                """
+                INSERT INTO generated_files (file_id, session_id, video_id, file_type,
+                                             file_path, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (file_id, session_id, video_id, file_type, file_path, ts),
+            )
+            self._conn.commit()
         return {
             "file_id": file_id,
             "session_id": session_id,
@@ -269,15 +286,16 @@ class Database:
     def get_generated_files(
         self, session_id: str, limit: int = 20
     ) -> list[dict[str, Any]]:
-        rows = self._conn.execute(
-            """
-            SELECT * FROM generated_files
-            WHERE session_id = ?
-            ORDER BY created_at DESC, rowid DESC
-            LIMIT ?
-            """,
-            (session_id, limit if limit and limit > 0 else -1),
-        ).fetchall()
+        with self._lock:
+            rows = self._conn.execute(
+                """
+                SELECT * FROM generated_files
+                WHERE session_id = ?
+                ORDER BY created_at DESC, rowid DESC
+                LIMIT ?
+                """,
+                (session_id, limit if limit and limit > 0 else -1),
+            ).fetchall()
         return [dict(r) for r in rows]
 
 

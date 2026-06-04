@@ -1,12 +1,15 @@
-"""CLI smoke test for the Phase 1 backend core (no gRPC, no MCP, no AI).
+"""Backend CLI entry point.
 
 Run from the repository root so that the ``backend`` package is importable:
 
-    python -m backend.main
-    python -m backend.main --db backend/storage/smoke.db --reset
+    # Phase 1 storage/session smoke test
+    python -m backend.main smoke --db backend/storage/smoke.db --reset
 
-It initializes the database, creates a session, stores a dummy video + chat
-messages, returns a dummy assistant response, and prints the built context.
+    # Phase 2 gRPC server
+    python -m backend.main serve --address 127.0.0.1:50051
+
+The ``smoke`` command exercises the storage layer directly; ``serve`` starts the
+gRPC server (dummy SendMessage response — planner/agents arrive later).
 """
 
 from __future__ import annotations
@@ -16,6 +19,7 @@ import json
 from pathlib import Path
 
 from backend.context.context_builder import ContextBuilder
+from backend.grpc_server import DEFAULT_ADDRESS, serve
 from backend.session.session_manager import SessionManager
 from backend.storage.db import DEFAULT_DB_PATH, Database
 
@@ -74,20 +78,38 @@ def run_smoke_test(db_path: Path, reset: bool) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Phase 1 backend smoke test")
-    parser.add_argument(
+    parser = argparse.ArgumentParser(description="Intel Local Video AI backend CLI")
+    sub = parser.add_subparsers(dest="command")
+
+    smoke = sub.add_parser("smoke", help="Phase 1 storage/session smoke test")
+    smoke.add_argument(
         "--db",
         type=Path,
         default=DEFAULT_DB_PATH,
         help=f"SQLite db path (default: {DEFAULT_DB_PATH})",
     )
-    parser.add_argument(
-        "--reset",
-        action="store_true",
-        help="delete the db file before running",
+    smoke.add_argument(
+        "--reset", action="store_true", help="delete the db file before running"
     )
+
+    serve_p = sub.add_parser("serve", help="Phase 2 gRPC server")
+    serve_p.add_argument("--address", default=DEFAULT_ADDRESS, help="host:port to bind")
+    serve_p.add_argument(
+        "--db",
+        type=Path,
+        default=DEFAULT_DB_PATH,
+        help=f"SQLite db path (default: {DEFAULT_DB_PATH})",
+    )
+
     args = parser.parse_args()
-    run_smoke_test(args.db, args.reset)
+
+    if args.command == "serve":
+        serve(args.address, str(args.db))
+    elif args.command == "smoke":
+        run_smoke_test(args.db, args.reset)
+    else:
+        # Default to the Phase 1 smoke test for backward compatibility.
+        run_smoke_test(DEFAULT_DB_PATH, reset=False)
 
 
 if __name__ == "__main__":

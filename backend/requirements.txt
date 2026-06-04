@@ -2,9 +2,9 @@
 # Pin versions as each phase introduces real dependencies. Keep all inference LOCAL.
 
 # --- Phase 2: gRPC server + proto codegen ---
-# grpcio
-# grpcio-tools
-# protobuf
+grpcio==1.81.0
+grpcio-tools==1.81.0
+protobuf==6.33.6
 
 # --- Phase 3: video processing ---
 # opencv-python
