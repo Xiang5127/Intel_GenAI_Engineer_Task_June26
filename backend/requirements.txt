@@ -6,10 +6,13 @@ grpcio==1.81.0
 grpcio-tools==1.81.0
 protobuf==6.33.6
 
+# --- Local MCP server framework (official Python SDK) ---
+mcp==1.27.2
+
 # --- Phase 3: video processing ---
-# opencv-python
-# moviepy
-# imageio-ffmpeg            # bundles ffmpeg if system ffmpeg is unavailable
+opencv-python==4.13.0.92
+imageio-ffmpeg==0.6.0       # bundles ffmpeg binary (system ffmpeg not required)
+# moviepy                   # optional alternative; not currently used
 
 # --- Phase 4: local transcription ---
 # faster-whisper            # or: openai-whisper (local weights only)
