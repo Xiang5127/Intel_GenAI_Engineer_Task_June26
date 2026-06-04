@@ -1,0 +1,30 @@
+# Intel Local Video AI MVP - backend dependencies (Phase 0 placeholder).
+# Pin versions as each phase introduces real dependencies. Keep all inference LOCAL.
+
+# --- Phase 2: gRPC server + proto codegen ---
+# grpcio
+# grpcio-tools
+# protobuf
+
+# --- Phase 3: video processing ---
+# opencv-python
+# moviepy
+# imageio-ffmpeg            # bundles ffmpeg if system ffmpeg is unavailable
+
+# --- Phase 4: local transcription ---
+# faster-whisper            # or: openai-whisper (local weights only)
+
+# --- Phase 5: vision / OCR ---
+# openvino                  # OpenVINO vision runtime (preferred)
+# numpy
+# pillow
+# pytesseract               # OCR (requires local tesseract) OR easyocr
+
+# --- Phase 6: report generation ---
+# reportlab                 # or: fpdf2
+# python-pptx
+
+# --- Phase 7: planner plan schema validation ---
+# pydantic
+
+# NOTE: No cloud SDKs. No LangChain/LangGraph. No vector DB.

@@ -1,0 +1,82 @@
+syntax = "proto3";
+
+package video_ai;
+
+// Intel Local Video AI MVP - gRPC contract (Phase 0 skeleton).
+// Service exposed by the Python backend host to the React + Tauri frontend.
+service VideoAIService {
+  // Create a new chat/analysis session.
+  rpc CreateSession(CreateSessionRequest) returns (CreateSessionResponse);
+
+  // Associate a local .mp4 file with the current session.
+  rpc UploadVideo(UploadVideoRequest) returns (UploadVideoResponse);
+
+  // Send a natural-language message and receive an assistant response.
+  rpc SendMessage(SendMessageRequest) returns (SendMessageResponse);
+
+  // Load persisted chat history for a session.
+  rpc GetChatHistory(GetChatHistoryRequest) returns (GetChatHistoryResponse);
+}
+
+// ----- CreateSession -----
+message CreateSessionRequest {
+  // Optional human-friendly label for the session.
+  string title = 1;
+}
+
+message CreateSessionResponse {
+  string session_id = 1;
+  int64 created_at = 2; // unix epoch seconds
+}
+
+// ----- UploadVideo -----
+message UploadVideoRequest {
+  string session_id = 1;
+  string video_path = 2; // absolute local path to .mp4
+}
+
+message UploadVideoResponse {
+  string video_id = 1;
+  string video_path = 2;
+  string status = 3; // e.g. "stored"
+}
+
+// ----- SendMessage -----
+message SendMessageRequest {
+  string session_id = 1;
+  string message = 2;
+}
+
+message SendMessageResponse {
+  string assistant_message = 1;
+  bool clarification_needed = 2;
+  string clarification_question = 3;
+  // Paths to any files generated while handling this message.
+  repeated GeneratedFile generated_files = 4;
+}
+
+// ----- GetChatHistory -----
+message GetChatHistoryRequest {
+  string session_id = 1;
+  int32 limit = 2; // 0 = all
+}
+
+message GetChatHistoryResponse {
+  repeated ChatMessage messages = 1;
+}
+
+// ----- Shared types -----
+message ChatMessage {
+  string message_id = 1;
+  string session_id = 2;
+  string role = 3; // "user" | "assistant" | "system"
+  string content = 4;
+  int64 created_at = 5; // unix epoch seconds
+}
+
+message GeneratedFile {
+  string file_id = 1;
+  string file_type = 2; // "pdf" | "pptx" | ...
+  string file_path = 3;
+  int64 created_at = 4;
+}
