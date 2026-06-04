@@ -10,6 +10,7 @@ so the generated directory is placed on ``sys.path`` before importing them.
 
 from __future__ import annotations
 
+import asyncio
 import sys
 from concurrent import futures
 from pathlib import Path
@@ -24,22 +25,25 @@ if str(_GENERATED_DIR) not in sys.path:
 import video_ai_pb2 as pb2  # noqa: E402  (path injected above)
 import video_ai_pb2_grpc as pb2_grpc  # noqa: E402
 
+from backend.planner.message_orchestrator import MessageOrchestrator  # noqa: E402
 from backend.session.session_manager import SessionManager  # noqa: E402
 from backend.storage.db import Database  # noqa: E402
 
 DEFAULT_ADDRESS = "127.0.0.1:50051"
 
 
-def _dummy_response(user_message: str) -> str:
-    """Phase 2 placeholder; real planning/execution arrives in Phase 7."""
-    return f"(dummy) backend received: {user_message!r}"
-
-
 class VideoAIServicer(pb2_grpc.VideoAIServiceServicer):
-    """Servicer backed by the SessionManager / SQLite storage."""
+    """Servicer backed by the SessionManager / SQLite storage + planner pipeline."""
 
-    def __init__(self, session_manager: SessionManager) -> None:
+    def __init__(
+        self,
+        session_manager: SessionManager,
+        orchestrator: Optional[MessageOrchestrator] = None,
+    ) -> None:
         self._sessions = session_manager
+        self._orchestrator = orchestrator or MessageOrchestrator(
+            session_manager.db, session_manager
+        )
 
     # ------------------------------------------------------------------ #
     def CreateSession(self, request, context):  # noqa: N802 (gRPC naming)
@@ -66,14 +70,31 @@ class VideoAIServicer(pb2_grpc.VideoAIServiceServicer):
     def SendMessage(self, request, context):  # noqa: N802
         if not self._require_session(request.session_id, context):
             return pb2.SendMessageResponse()
-        self._sessions.save_chat_message(request.session_id, "user", request.message)
-        reply = _dummy_response(request.message)
-        self._sessions.save_chat_message(request.session_id, "assistant", reply)
+        if not request.message:
+            context.abort(grpc.StatusCode.INVALID_ARGUMENT, "message is required")
+            return pb2.SendMessageResponse()
+
+        # The orchestrator + agents are async (MCP tool calls); run them to
+        # completion on a dedicated event loop for this request.
+        result = asyncio.run(
+            self._orchestrator.handle_message(request.session_id, request.message)
+        )
+
+        files = self._sessions.db.get_generated_files(request.session_id, limit=len(result["generated_files"]) or 1) \
+            if result["generated_files"] else []
         return pb2.SendMessageResponse(
-            assistant_message=reply,
-            clarification_needed=False,
-            clarification_question="",
-            generated_files=[],
+            assistant_message=result["assistant_message"],
+            clarification_needed=result["clarification_needed"],
+            clarification_question=result["clarification_question"],
+            generated_files=[
+                pb2.GeneratedFile(
+                    file_id=f["file_id"],
+                    file_type=f["file_type"],
+                    file_path=f["file_path"],
+                    created_at=f["created_at"],
+                )
+                for f in files
+            ],
         )
 
     # ------------------------------------------------------------------ #

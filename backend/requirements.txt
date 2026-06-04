@@ -28,6 +28,6 @@ reportlab==4.5.1            # PDF generation (no model, rule-based summary)
 python-pptx==1.0.2          # PPTX generation
 
 # --- Phase 7: planner plan schema validation ---
-# pydantic
+pydantic==2.13.4            # plan schema models + validation (heuristic planner stub; LLM later)
 
 # NOTE: No cloud SDKs. No LangChain/LangGraph. No vector DB.

@@ -18,6 +18,11 @@ class SessionManager:
     def __init__(self, db: Database) -> None:
         self._db = db
 
+    @property
+    def db(self) -> Database:
+        """Underlying storage (used by the planner pipeline / gRPC layer)."""
+        return self._db
+
     # ------------------------------------------------------------------ #
     # sessions
     # ------------------------------------------------------------------ #
