@@ -15,7 +15,7 @@ imageio-ffmpeg==0.6.0       # bundles ffmpeg binary (system ffmpeg not required)
 # moviepy                   # optional alternative; not currently used
 
 # --- Phase 4: local transcription ---
-# faster-whisper            # or: openai-whisper (local weights only)
+faster-whisper==1.2.1       # local Whisper (CTranslate2); pulls 'av' for audio I/O
 
 # --- Phase 5: vision / OCR ---
 # openvino                  # OpenVINO vision runtime (preferred)

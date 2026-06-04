@@ -11,6 +11,7 @@ later without changing the agent-facing API.
 
 from __future__ import annotations
 
+import os
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -23,6 +24,23 @@ from mcp.client.stdio import stdio_client
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
+def _child_env(extra: Optional[dict[str, str]] = None) -> dict[str, str]:
+    """Full parent environment for MCP subprocesses.
+
+    The SDK's default stdio environment is a minimal whitelist, which can break
+    libraries that rely on user env (e.g. huggingface_hub cache resolution).
+    We pass the complete environment so subprocesses behave like a normal local
+    process, plus HF_HUB_OFFLINE=1 so cached models load without a network check.
+    """
+    env = dict(os.environ)
+    env.setdefault("HF_HUB_OFFLINE", "1")
+    env.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
+    env.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+    if extra:
+        env.update(extra)
+    return env
+
+
 @dataclass(frozen=True)
 class MCPServerSpec:
     """How to launch a local MCP server as a subprocess."""
@@ -30,18 +48,23 @@ class MCPServerSpec:
     name: str
     module: str  # e.g. "backend.mcp_servers.video_mcp_server"
     args: list[str] = field(default_factory=list)
+    env: dict[str, str] = field(default_factory=dict)
 
     def to_stdio_params(self) -> StdioServerParameters:
         return StdioServerParameters(
             command=sys.executable,
             args=["-m", self.module, *self.args],
             cwd=str(REPO_ROOT),
+            env=_child_env(self.env),
         )
 
 
 # Known local MCP servers. Extended as later phases add servers.
 DEFAULT_SERVERS: dict[str, MCPServerSpec] = {
     "video": MCPServerSpec(name="video", module="backend.mcp_servers.video_mcp_server"),
+    "transcription": MCPServerSpec(
+        name="transcription", module="backend.mcp_servers.transcription_mcp_server"
+    ),
 }
 
 
