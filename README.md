@@ -2,6 +2,10 @@
 
 A **fully local, offline** AI desktop application for analyzing short `.mp4` videos through a chat interface. No cloud APIs, no public MCP servers, no vector DB.
 
+> **Project handoff:** The backend is complete through Phase 7. Development has been handed off to Codex for the React + Tauri frontend (Phase 8) and docs (Phase 9). **Start here:**
+> - **[`HANDOFF_TO_CODEX.md`](./HANDOFF_TO_CODEX.md)** — architecture, how to run, gRPC/DB contracts, agents/MCP tools, constraints, and what to build next.
+> - **[`CHECKPOINTS.md`](./CHECKPOINTS.md)** — per-phase status, files touched, manual test steps, and known limitations.
+
 ## What it will do
 
 - Select a local `.mp4` video.
@@ -82,10 +86,15 @@ Local Tools / Models (ffmpeg/OpenCV, Whisper, OpenVINO, OCR, ReportLab/python-pp
 - ffmpeg — preferred for Phase 3 (fallback: OpenCV / `imageio-ffmpeg`)
 
 ### Run backend
-> TODO (Phase 1+)
+See **[`HANDOFF_TO_CODEX.md` §5](./HANDOFF_TO_CODEX.md)** for full setup. Quick start (from repo root):
+```powershell
+python -m pip install -r backend/requirements.txt
+ollama pull qwen2.5:3b          # one-time; or set PLANNER_BACKEND=heuristic to skip the LLM
+python -m backend.main serve --address 127.0.0.1:50051
+```
 
 ### Run frontend
-> TODO (Phase 8)
+> TODO (Phase 8) — to be implemented by Codex. See **[`HANDOFF_TO_CODEX.md` §12](./HANDOFF_TO_CODEX.md)**.
 
 ## Example queries
 ```txt
