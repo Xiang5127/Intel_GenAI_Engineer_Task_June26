@@ -146,23 +146,21 @@ python -m backend.main serve --address 127.0.0.1:50051
 
 ## End-to-End Demo Test
 
-Use `test_folder/test_video.mp4` as the sample video.
+Use [`test_folder/Test Video.mp4`](./test_folder/Test%20Video.mp4) as the sample video.
 
 Try these five queries:
 
 ```txt
 What objects are shown in the video? Describe them.
-Read the on-screen text using OCR.
-Transcribe the video.
+Read the on-screen text using OCR. Then transcribe the video.
 Summarize the video.
-Generate a PDF report with the key points from the video.
+Generate a powerpoint presentation about the keypoints of the video.
+Summarize our discussion so far and generate a PDF report.
 ```
 
-Optional follow-up:
-
-```txt
-Generate a PowerPoint from the latest report content.
-```
+You can also try other natural-language prompts. For example, try an ambiguous
+or vague request such as `Make a report` to see the LLM ask a clarification
+question before continuing through elicitation.
 
 ## Sample Inputs and Generated Artifacts
 
@@ -178,8 +176,8 @@ Run the demo queries to recreate fresh files.
 
 ```powershell
 python -m unittest discover -s backend/tests -v
-python -m backend.scripts.vision_smoke --video "test_folder/test_video.mp4"
-python -m backend.scripts.interview_demo_smoke --video "test_folder/test_video.mp4"
+python -m backend.scripts.vision_smoke --video "test_folder/Test Video.mp4"
+python -m backend.scripts.interview_demo_smoke --video "test_folder/Test Video.mp4"
 ```
 
 ## Local-Only Constraints

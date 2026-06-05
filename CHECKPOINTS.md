@@ -97,8 +97,8 @@ Run from the repository root:
 
 ```powershell
 python -m unittest discover -s backend/tests -v
-python -m backend.scripts.vision_smoke --video "test_folder/test_video.mp4"
-python -m backend.scripts.interview_demo_smoke --video "test_folder/test_video.mp4"
+python -m backend.scripts.vision_smoke --video "test_folder/Test Video.mp4"
+python -m backend.scripts.interview_demo_smoke --video "test_folder/Test Video.mp4"
 ```
 
 Frontend verification:
