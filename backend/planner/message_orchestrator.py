@@ -22,7 +22,7 @@ from backend.planner.plan_executor import PlanExecutor
 from backend.planner.plan_validator import PlanValidator
 from backend.planner.planner_service import PlannerService
 from backend.session.session_manager import SessionManager
-from backend.services.response_synthesis import ResponseSynthesizer
+from backend.services.response_composer import compose_response
 from backend.storage.db import Database
 
 _ANALYSIS_TYPES = ("transcript", "objects", "ocr", "graphs", "summary")
@@ -44,7 +44,6 @@ class MessageOrchestrator:
         self._validator = PlanValidator()
         self._executor = PlanExecutor(self._mcp, db)
         self._clarify = ClarificationManager(db)
-        self._responses = ResponseSynthesizer()
 
     async def handle_message(self, session_id: str, message: str) -> dict[str, Any]:
         self._sessions.save_chat_message(session_id, "user", message)
@@ -73,14 +72,7 @@ class MessageOrchestrator:
         # Valid, executable plan: clear any stale clarification and run it.
         self._clarify.clear(session_id)
         execution = await self._executor.execute(result.plan, context)
-        if execution.success:
-            execution.assistant_message = self._responses.synthesize(
-                message,
-                context,
-                execution.step_results,
-                execution.generated_files,
-                execution.assistant_message,
-            )
+        execution.assistant_message = compose_response(result.plan, execution)
 
         self._sessions.save_chat_message(session_id, "assistant", execution.assistant_message)
         return self._response(

@@ -2,7 +2,7 @@
 
 A **fully local, offline** AI desktop application for analyzing short `.mp4` videos through a chat interface. No cloud APIs, no public MCP servers, no vector DB.
 
-> **Current status:** The backend is complete through Phase 7 and the React + Tauri frontend (Phase 8) is implemented. The next milestone is frontend-led integration testing, followed by real OpenVINO object detection and OCR.
+> **Current status:** The desktop frontend, local LLM analysis, and interaction-reliability milestone are implemented. The next major milestone is real OpenVINO object detection and OCR.
 > - **[`HANDOFF_TO_CODEX.md`](./HANDOFF_TO_CODEX.md)** — architecture, how to run, gRPC/DB contracts, agents/MCP tools, constraints, and what to build next.
 > - **[`CHECKPOINTS.md`](./CHECKPOINTS.md)** — per-phase status, files touched, manual test steps, and known limitations.
 
@@ -27,7 +27,7 @@ Python Backend Host
   ├── SessionManager        (session / current video / pending clarification)
   ├── SQLite Storage        (sessions, chat, videos, analysis, generated files)
   ├── ContextBuilder        (compact planner context)
-  ├── PlannerService        (local LLM -> JSON plan)
+  ├── PlannerService        (deterministic routes + local LLM JSON fallback)
   ├── PlanValidator         (deterministic, Pydantic)
   ├── ClarificationManager  (elicitation questions)
   ├── PlanExecutor          (deterministic step runner)
@@ -75,7 +75,8 @@ Local Tools / Models (ffmpeg/OpenCV, Whisper, OpenVINO, OCR, ReportLab/python-pp
 6. Report MCP + summary/report agents (PDF / PPTX).
 7. Planner / Validator / Executor (JSON plan pipeline).
 8. React + Tauri frontend. **Implemented.**
-9. Docs + sample outputs.
+9. Real local LLM analysis. **Implemented.**
+10. Interaction reliability and response speed. **Implemented.**
 
 ## Setup
 
@@ -93,14 +94,16 @@ ollama pull qwen2.5:3b          # one-time; or set PLANNER_BACKEND=heuristic to 
 python -m backend.main serve --address 127.0.0.1:50051
 ```
 
-Ollama also produces evidence-aware summaries, query-specific reports,
-chat-history summaries, and grounded final answers. To keep LLM planning while
-using deterministic analysis output, set `ANALYSIS_BACKEND=rule_based`.
+Ollama produces evidence-aware summaries, query-specific reports, and
+chat-history summaries. Common workflows are routed deterministically, and
+completed plans use short deterministic responses instead of a second LLM call.
+To use deterministic analysis output too, set `ANALYSIS_BACKEND=rule_based`.
 
 Optional analysis overrides:
 ```powershell
 $env:ANALYSIS_MODEL="qwen2.5:3b"  # defaults to OLLAMA_MODEL
 $env:ANALYSIS_TIMEOUT="120"       # defaults to OLLAMA_TIMEOUT
+$env:ANALYSIS_MAX_TOKENS="700"    # structured summary generation cap
 ```
 
 ### Verify backend
@@ -136,7 +139,14 @@ In the app:
 2. Send `Summarize the video`.
 3. Send `What is the main point?`.
 4. Send `Create a PDF report with the key points`.
-5. Confirm the generated PDF appears and opens from the files panel.
+5. Send `Generate a PowerPoint`.
+6. Confirm the PowerPoint reuses the latest report content without trying to read the PDF.
+7. Send `Summarize our discussion so far and generate a PDF`.
+8. Confirm both generated files appear and open from the files panel.
+
+The first uncached Ollama summary can still be slow on CPU. Repeated exports
+reuse the latest normalized content bundle and require no new LLM call.
+Generated PDF/PPTX files are outputs only and are never treated as evidence.
 
 For deterministic testing without Ollama analysis:
 ```powershell
@@ -171,6 +181,6 @@ Make a report.            # -> should ask a clarification
 ```
 
 ## Constraints
-- All AI inference runs **locally** (Hugging Face / OpenVINO).
+- All AI inference runs **locally** (Whisper / OpenVINO / Ollama).
 - No cloud APIs, no public MCP servers, no vector DB, no LangChain/LangGraph, no real-time streaming.
 - Generated files are stored under `backend/outputs/`.

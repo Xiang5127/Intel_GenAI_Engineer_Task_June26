@@ -38,7 +38,7 @@ class SummaryAgent(BaseAgent):
         analyses = self._load_analyses(video_id) if video_id else {}
         session_id = context.get("session_id")
         chat_messages = (
-            self.db.get_recent_messages(session_id, 0)
+            self.db.get_recent_messages(session_id, 20)
             if is_chat_summary and session_id
             else context.get("recent_messages", []) if is_chat_summary else None
         )
@@ -66,15 +66,18 @@ class SummaryAgent(BaseAgent):
 
         if video_id and not is_chat_summary:
             self.db.save_video_analysis(video_id, ANALYSIS_TYPE, json.dumps(bundle.to_dict()))
+        if session_id:
+            self.db.save_content_bundle(
+                session_id,
+                "chat_summary" if is_chat_summary else "video_summary",
+                json.dumps(bundle.to_dict()),
+                video_id=None if is_chat_summary else video_id,
+                query=inputs.get("query"),
+            )
 
         n_sections = len(bundle.report_data.get("sections", []))
         n_slides = len(bundle.slide_data.get("slides", []))
-        metadata = bundle.report_data.get("metadata", {})
-        fallback = " using deterministic fallback" if metadata.get("fallback") else ""
-        summary = (
-            f"Summary built by '{summarizer.name}' summarizer{fallback}: "
-            f"{n_sections} report section(s), {n_slides} slide(s)."
-        )
+        summary = f"Summary ready: {n_sections} section(s), {n_slides} slide(s)."
         return self._ok(intent, summary, bundle.to_dict())
 
     def _load_analyses(self, video_id: str) -> dict[str, Any]:

@@ -191,9 +191,9 @@ All commands assume the repository root `e:\Intel Task` and that the `backend` p
 - **Status:** Implemented
 - **Summary:** Added a shared local Ollama transport, evidence-aware structured
   summaries, real chat-history summaries, automatic evidence prerequisites,
-  query-aware reports, and grounded final-answer synthesis. Analysis remains
+  query-aware reports, and an optional grounded answer synthesizer. Analysis remains
   local and falls back to deterministic output when Ollama fails.
-- **Interfaces:** gRPC proto, MCP boundaries, and SQLite schema are unchanged.
+- **Interfaces:** gRPC proto and MCP boundaries are unchanged.
 - **Env:** `ANALYSIS_BACKEND` (`ollama` default | `rule_based`),
   `ANALYSIS_MODEL` (defaults to `OLLAMA_MODEL`), and `ANALYSIS_TIMEOUT`
   (defaults to `OLLAMA_TIMEOUT`).
@@ -201,3 +201,26 @@ All commands assume the repository root `e:\Intel Task` and that the `backend` p
   - `python -m unittest discover -s backend/tests -v`
   - `python -m backend.scripts.llm_analysis_smoke`
   - Existing planner and report smoke tests remain supported.
+
+---
+
+## Phase 10 - Interaction Reliability and Response Speed
+- **Status:** Implemented
+- **Summary:** Added deterministic routing for common workflows, reusable
+  normalized content bundles, invalid-plan repair, concise deterministic final
+  responses, and smaller bounded Ollama analysis prompts.
+- **Behavior fixes:**
+  - A PDF followed by `Generate a PowerPoint` reuses the latest report content.
+  - Generated PDF/PPTX files remain outputs and are never read as sources.
+  - `Summarize our discussion so far and generate a PDF` works without a video.
+  - Known workflows skip the LLM planner; repeat exports skip Ollama entirely.
+  - Replies no longer expose model, planner, agent, or file-path details.
+- **Storage:** Added `content_bundles` for reusable `report_data` / `slide_data`.
+- **Env:** `ANALYSIS_MAX_TOKENS` defaults to `700`.
+- **Verification:**
+  - `python -m unittest discover -s backend/tests -v`
+  - `python -m backend.scripts.report_smoke`
+  - `python -m backend.scripts.planner_smoke --video "test_folder/test_video.mp4"`
+  - `python -m backend.scripts.llm_analysis_smoke`
+- **Remaining limitation:** The first uncached local-Ollama analysis may still be
+  slow on CPU. OpenVINO object detection/OCR will not reduce Ollama generation time.

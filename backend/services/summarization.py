@@ -7,12 +7,9 @@ agnostic about HOW the summary was produced (rules now, LLM later).
 
 Design:
 - ``Summarizer`` is the swap-in interface.
-- ``RuleBasedSummarizer`` is the Phase 6 implementation (deterministic, no model).
-- ``get_summarizer()`` returns the active summarizer; later phases can register
-  an ``LLMSummarizer`` without touching callers, the MCP server, or ReportAgent.
-
-# Local Ollama analysis is selected by default; the deterministic implementation
-# remains the fallback and the normalized downstream contract is unchanged.
+- ``get_summarizer()`` selects local Ollama analysis by default.
+- ``RuleBasedSummarizer`` is the deterministic fallback.
+- The normalized downstream contract is unchanged across implementations.
 """
 
 from __future__ import annotations
@@ -278,6 +275,6 @@ def get_summarizer() -> Summarizer:
 
 
 def set_summarizer(summarizer: Optional[Summarizer]) -> None:
-    """Override the active summarizer (e.g. inject LLMSummarizer in Phase 7)."""
+    """Override the active summarizer, primarily for deterministic tests."""
     global _summarizer
     _summarizer = summarizer

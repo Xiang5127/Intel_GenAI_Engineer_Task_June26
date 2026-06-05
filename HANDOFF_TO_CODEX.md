@@ -1,6 +1,6 @@
 # HANDOFF TO CODEX
 
-This document originally handed the **Intel Local Video AI MVP** from Windsurf to Codex. The **backend is complete through Phase 7** and the **React + Tauri frontend (Phase 8) is now implemented**. Phase-by-phase detail lives in `CHECKPOINTS.md`.
+This document originally handed the **Intel Local Video AI MVP** from Windsurf to Codex. The React + Tauri frontend, local LLM analysis, and interaction-reliability milestones are implemented. Phase-by-phase detail lives in `CHECKPOINTS.md`.
 
 ---
 
@@ -36,16 +36,18 @@ Local Tools / Models (OpenCV/imageio-ffmpeg, faster-whisper, OpenVINO, ReportLab
 ```
 
 **Control flow for a user message (`SendMessage`):**
-save user message -> build context -> planner generates JSON plan -> validator checks plan -> if clarification needed, persist question and reply -> else execute plan via agents (which call MCP tools) -> persist generated files -> save assistant message -> reply.
+save user message -> build context -> deterministically route known workflows or ask the local planner for JSON -> repair and validate the plan -> execute via agents/MCP -> compose a concise deterministic response -> persist and reply.
 
 ## 3. What Has Already Been Implemented
-- Phases 0–7 (see `CHECKPOINTS.md`). In short:
+- Completed milestones (see `CHECKPOINTS.md`). In short:
   - SQLite storage, sessions, chat persistence, compact context building.
   - gRPC `VideoAIService` (4 RPCs) wired to the planner pipeline.
   - Four real local MCP servers (video, transcription, vision, report).
   - Agents: transcription, vision, summary, report, clarification.
-  - JSON planning pipeline: PlannerService (Ollama `qwen2.5:3b` default + heuristic fallback), deterministic PlanValidator and PlanExecutor.
+  - JSON planning pipeline: deterministic common-workflow router, Ollama `qwen2.5:3b` fallback planner, plan repair, deterministic PlanValidator and PlanExecutor.
   - PDF/PPTX report generation from a normalized data structure.
+  - Evidence-aware local Ollama summaries and query-specific reports.
+  - Reusable normalized content bundles for reliable repeat PDF/PPTX exports.
   - Smoke tests for every phase under `backend/scripts/`.
   - React + Tauri desktop frontend with a Rust tonic bridge, MP4 picker, chat,
     clarification display, generated-files panel, active-session resume, and tests.
@@ -53,10 +55,11 @@ save user message -> build context -> planner generates JSON plan -> validator c
 ## 4. What Is Incomplete
 - **Frontend packaging/lifecycle:** the Python backend is started manually during development; automatic backend packaging and launch are deferred.
 - **Real vision models:** detection/OCR run in **fallback mode** (no IR model bundled). Set `VISION_DET_MODEL` + an OCR backend to enable.
-- **LLM summarization:** summary is still **rule-based**; `LLMSummarizer` is a TODO (the `Summarizer` interface is ready). Same applies to evidence-aware and query-driven reports.
+- **Local LLM latency:** the first uncached Ollama summary may still be slow on
+  CPU. Common routing is immediate and repeated exports reuse cached content.
 - **Multi-turn clarification:** a pending question is persisted, but answers are re-planned fresh (no deep stitching).
 - **`extract_audio` error masking:** ffmpeg failures with empty output are reported as `has_audio=False`.
-- **Docs polish** (Phase 9): README setup sections, sample outputs.
+- **Submission polish:** sample outputs and final submission documentation.
 
 ## 5. How to Run the Backend
 Prerequisites: Python 3.13 (project tested on it), packages from `backend/requirements.txt`, and (for LLM planning) Ollama.
@@ -77,6 +80,7 @@ python -m backend.main serve --address 127.0.0.1:50051
   `ANALYSIS_BACKEND=rule_based`.
 - Analysis uses `ANALYSIS_MODEL` and `ANALYSIS_TIMEOUT` when set, otherwise it
   inherits `OLLAMA_MODEL` and `OLLAMA_TIMEOUT`.
+- `ANALYSIS_MAX_TOKENS` controls structured summary output length (default `700`).
 - DB path defaults to `backend/storage/video_ai.db`; generated files go under `backend/outputs/`.
 
 ## 6. How to Run or Test MCP Servers
@@ -113,7 +117,8 @@ Defined in `backend/storage/schema.sql`; all timestamps are unix epoch seconds.
 - **videos**(`video_id` PK, `session_id` FK->sessions CASCADE, `video_path`, `duration_seconds`, `width`, `height`, `fps`, `created_at`)
 - **video_analysis**(`analysis_id` PK, `video_id` FK->videos CASCADE, `analysis_type` in transcript/objects/ocr/graphs/visual_summary/summary, `result_json`, `created_at`)
 - **generated_files**(`file_id` PK, `session_id` FK->sessions CASCADE, `video_id` FK->videos SET NULL, `file_type`, `file_path`, `created_at`)
-- Indexes on session/video lookups for messages, videos, analyses, and generated files.
+- **content_bundles**(`bundle_id` PK, `session_id` FK->sessions CASCADE, nullable `video_id`, `source_kind`, `query`, normalized `bundle_json`, `created_at`)
+- Indexes on session/video lookups for messages, videos, analyses, generated files, and content bundles.
 
 ## 9. Agent List and Responsibilities
 Agents live in `backend/agents/`; all extend `BaseAgent` and return an `AgentResult`. They orchestrate MCP tool calls and persist results — they never talk to the frontend.
@@ -151,10 +156,9 @@ Servers live in `backend/mcp_servers/` (FastMCP over stdio). Registered in `back
 - Exercise the completed frontend against representative videos and planner flows.
 - Integrate required real OpenVINO object detection and OCR behind the existing
   runtime/service/MCP/agent boundaries.
-- Fix backend behavior gaps discovered during frontend-led testing.
 - Add sample outputs and final submission documentation.
 
 ---
 
-### Quick verification before frontend work
+### Quick verification
 Run `python -m backend.scripts.grpc_smoke` and `python -m backend.scripts.planner_smoke --video "test_folder/test_video.mp4"` to confirm the backend is healthy, then build the frontend against the gRPC contract in Section 7.

@@ -7,7 +7,7 @@ Parses the raw JSON plan and enforces the rules from ``03_PLAN_SCHEMA.md``:
 - depends_on references existing prior steps; no cycles.
 - Video-required intents need a selected video.
 - CLARIFY must include a clarification question.
-- Report steps need a source step or existing analyses.
+- Report steps need a source step, existing analyses, or a reusable content bundle.
 """
 
 from __future__ import annotations
@@ -76,6 +76,7 @@ class PlanValidator:
         seen: set[str] = set()
         has_video = bool(context.get("current_video"))
         has_analyses = bool(context.get("has_analyses"))
+        has_content_bundle = bool(context.get("latest_content_bundle"))
 
         for step in plan.steps:
             # agent matches intent
@@ -114,7 +115,12 @@ class PlanValidator:
                 )
 
             # report steps need source or stored analyses
-            if step.intent in REPORT_INTENTS and not step.depends_on and not has_analyses:
+            if (
+                step.intent in REPORT_INTENTS
+                and not step.depends_on
+                and not has_analyses
+                and not has_content_bundle
+            ):
                 return ValidationResult(
                     True,
                     plan=plan,

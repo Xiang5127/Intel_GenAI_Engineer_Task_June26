@@ -24,6 +24,7 @@ import re
 from typing import Any, Optional, Protocol
 
 from backend.planner.planner_prompt import build_planner_prompt
+from backend.planner.workflow_router import route_known_workflow
 
 _log = logging.getLogger(__name__)
 
@@ -205,10 +206,12 @@ class PlannerService:
         model: Optional[PlannerModel] = None,
         fallback: Optional[PlannerModel] = None,
         enable_fallback: bool = True,
+        enable_deterministic_routing: bool = True,
     ) -> None:
         self._model = model or _default_model()
         self._fallback = fallback or HeuristicPlannerModel()
         self._enable_fallback = enable_fallback
+        self._enable_deterministic_routing = enable_deterministic_routing
         self._last_model_name = self._model.name
 
     @property
@@ -225,21 +228,69 @@ class PlannerService:
         Tries the primary model first; on any failure (unreachable LLM, invalid
         JSON) falls back to the heuristic stub so a valid plan is always returned.
         """
+        if self._enable_deterministic_routing:
+            routed = route_known_workflow(user_query, context)
+            if routed is not None:
+                self._last_model_name = "deterministic_router"
+                return _complete_plan(json.dumps(routed), user_query, context)
+
         prompt = build_planner_prompt(user_query, context)
         try:
             raw = self._model.generate(prompt, user_query, context)
             json.loads(raw)  # ensure parseable before accepting
             self._last_model_name = self._model.name
-            return _complete_plan(raw, user_query, context)
+            return _complete_plan(_repair_plan(raw, context), user_query, context)
         except Exception as exc:  # noqa: BLE001 - any failure -> safe fallback
             if not self._enable_fallback or self._fallback is self._model:
                 raise
             _log.warning("planner '%s' failed (%s); falling back to '%s'",
                          self._model.name, exc, self._fallback.name)
             self._last_model_name = self._fallback.name
-            return _complete_plan(
-                self._fallback.generate(prompt, user_query, context), user_query, context
-            )
+            fallback_raw = self._fallback.generate(prompt, user_query, context)
+            return _complete_plan(_repair_plan(fallback_raw, context), user_query, context)
+
+
+def _repair_plan(raw: str, context: dict[str, Any]) -> str:
+    """Repair invented dependency references before deterministic completion."""
+    data = json.loads(raw)
+    steps = data.get("steps") or []
+    seen_ids: list[str] = []
+    intent_ids: dict[str, str] = {}
+
+    for index, step in enumerate(steps, start=1):
+        step_id = str(step.get("step_id") or f"step_{index}")
+        if step_id in seen_ids:
+            step_id = f"step_{index}"
+        step["step_id"] = step_id
+        intent = str(step.get("intent") or "")
+
+        repaired_dependencies: list[str] = []
+        for dependency in step.get("depends_on") or []:
+            reference = str(dependency)
+            resolved = reference if reference in seen_ids else intent_ids.get(reference)
+            if resolved and resolved not in repaired_dependencies:
+                repaired_dependencies.append(resolved)
+        step["depends_on"] = repaired_dependencies
+
+        inputs = step.setdefault("inputs", {})
+        source = inputs.get("source_step")
+        if source:
+            resolved = str(source) if str(source) in seen_ids else intent_ids.get(str(source))
+            if resolved:
+                inputs["source_step"] = resolved
+                if resolved not in step["depends_on"]:
+                    step["depends_on"].append(resolved)
+            else:
+                inputs.pop("source_step", None)
+
+        if intent in {"GENERATE_PDF", "GENERATE_PPTX"} and not step["depends_on"]:
+            if context.get("latest_content_bundle"):
+                inputs["reuse_latest_bundle"] = True
+
+        seen_ids.append(step_id)
+        intent_ids[intent] = step_id
+
+    return json.dumps(data)
 
 
 def _complete_plan(raw: str, user_query: str, context: dict[str, Any]) -> str:
@@ -249,17 +300,12 @@ def _complete_plan(raw: str, user_query: str, context: dict[str, Any]) -> str:
     if not steps:
         return raw
 
-    query_intents = {
-        "SUMMARIZE_VIDEO",
-        "SUMMARIZE_CHAT_HISTORY",
-        "GENERATE_PDF",
-        "GENERATE_PPTX",
-    }
+    query_intents = {"SUMMARIZE_VIDEO", "SUMMARIZE_CHAT_HISTORY"}
     for step in steps:
         if step.get("intent") in query_intents:
             step.setdefault("inputs", {}).setdefault("query", user_query)
 
-    if not context.get("current_video") or any(step.get("intent") == "CLARIFY" for step in steps):
+    if any(step.get("intent") == "CLARIFY" for step in steps):
         return json.dumps(data)
 
     available = context.get("available_analyses", {})
@@ -284,7 +330,17 @@ def _complete_plan(raw: str, user_query: str, context: dict[str, Any]) -> str:
     report_steps = [
         step for step in steps if step.get("intent") in {"GENERATE_PDF", "GENERATE_PPTX"}
     ]
-    if report_steps and not summary_ids and all(not step.get("depends_on") for step in report_steps):
+    reusable_report = any(
+        step.get("inputs", {}).get("reuse_latest_bundle") for step in report_steps
+    )
+    if (
+        report_steps
+        and not summary_ids
+        and not reusable_report
+        and all(not step.get("depends_on") for step in report_steps)
+        and context.get("current_video")
+        and not context.get("available_analyses", {}).get("summary")
+    ):
         summary_id = next_id("summary")
         steps.insert(
             0,
@@ -297,7 +353,7 @@ def _complete_plan(raw: str, user_query: str, context: dict[str, Any]) -> str:
 
     prereqs: list[dict[str, Any]] = []
     prereq_ids: list[str] = []
-    if summary_ids and not available.get("transcript") and "TRANSCRIBE_VIDEO" not in present_intents:
+    if context.get("current_video") and summary_ids and not available.get("transcript") and "TRANSCRIBE_VIDEO" not in present_intents:
         step_id = next_id("transcript")
         prereqs.append(
             {
@@ -308,7 +364,7 @@ def _complete_plan(raw: str, user_query: str, context: dict[str, Any]) -> str:
         prereq_ids.append(step_id)
     has_visual = any(available.get(key) for key in ("objects", "ocr", "graphs"))
     visual_intents = {"ANALYZE_OBJECTS", "COUNT_OBJECTS", "DETECT_GRAPHS", "ANALYZE_OCR"}
-    if summary_ids and not has_visual and not present_intents.intersection(visual_intents):
+    if context.get("current_video") and summary_ids and not has_visual and not present_intents.intersection(visual_intents):
         step_id = next_id("vision")
         prereqs.append(
             {

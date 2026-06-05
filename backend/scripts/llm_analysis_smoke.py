@@ -1,11 +1,13 @@
-"""Live local-Ollama smoke test for structured analysis and final answers."""
+"""Live local-Ollama smoke test for structured analysis and concise responses."""
 
 from __future__ import annotations
 
 from backend.agents.base_agent import AgentResult
+from backend.planner.plan_executor import ExecutionResult
+from backend.planner.plan_schema import Plan
 from backend.services.ollama_service import OllamaClient
 from backend.services.ollama_summarizer import OllamaSummarizer
-from backend.services.response_synthesis import ResponseSynthesizer
+from backend.services.response_composer import compose_response
 
 
 def main() -> None:
@@ -40,23 +42,34 @@ def main() -> None:
     assert not bundle.report_data["metadata"]["fallback"]
     print(f"Structured analysis OK: {bundle.report_data['title']}")
 
-    answer = ResponseSynthesizer(client=client).synthesize(
-        "What is the main point?",
-        {"recent_messages": []},
-        {
-            "summary": AgentResult(
-                "summary_agent",
-                "SUMMARIZE_VIDEO",
-                True,
-                "A grounded summary was generated.",
-                bundle.to_dict(),
-            )
-        },
-        [],
-        "Fallback response",
+    plan = Plan.model_validate({
+        "confidence": 0.99,
+        "steps": [{
+            "step_id": "summary",
+            "intent": "SUMMARIZE_VIDEO",
+            "agent": "summary_agent",
+            "inputs": {"query": "What is the main point?"},
+            "depends_on": [],
+        }],
+    })
+    answer = compose_response(
+        plan,
+        ExecutionResult(
+            "Summary ready.",
+            step_results={
+                "summary": AgentResult(
+                    "summary_agent",
+                    "SUMMARIZE_VIDEO",
+                    True,
+                    "A grounded summary was generated.",
+                    bundle.to_dict(),
+                )
+            },
+        ),
     )
-    assert answer and answer != "Fallback response"
-    print(f"Grounded answer OK: {answer[:160]}")
+    assert answer and len(answer.split()) <= 120
+    assert "ollama" not in answer.lower()
+    print(f"Concise response OK: {answer[:160]}")
 
 
 if __name__ == "__main__":

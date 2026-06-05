@@ -66,7 +66,10 @@ def build_planner_prompt(user_query: str, context: dict[str, Any]) -> str:
         "current_video": context.get("current_video"),
         "pending_clarification": context.get("pending_clarification"),
         "recent_messages": context.get("recent_messages", [])[-5:],
-        "generated_files": context.get("generated_files", []),
+        "generated_file_types": [
+            item.get("file_type") for item in context.get("generated_files", [])
+        ],
+        "latest_content_bundle": context.get("latest_content_bundle"),
         "available_analyses": context.get("available_analyses", {}),
     }
 
@@ -92,6 +95,9 @@ Rules:
   and put the user's question in inputs.query.
 - Use SUMMARIZE_CHAT_HISTORY only when the user explicitly asks about the
   conversation, discussion, or chat history rather than the video.
+- Generated PDF/PPTX files are outputs, never analysis sources.
+- depends_on and inputs.source_step may reference only prior step_id values in
+  the current plan. Never reference intent names, files, or context field names.
 - Use the single most specific intent for the analysis; do NOT add redundant
   steps (e.g. for "how many animals" use COUNT_OBJECTS alone, not ANALYZE_OBJECTS
   as well).

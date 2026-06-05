@@ -19,6 +19,7 @@ from pathlib import Path
 
 from backend.planner.message_orchestrator import MessageOrchestrator
 from backend.planner.planner_service import HeuristicPlannerModel, PlannerService
+from backend.services.summarization import RuleBasedSummarizer, set_summarizer
 from backend.session.session_manager import SessionManager
 from backend.storage.db import Database
 
@@ -95,16 +96,18 @@ def main() -> None:
     parser.add_argument("--video", required=True, help="path to a local .mp4")
     args = parser.parse_args()
 
+    set_summarizer(RuleBasedSummarizer())
     db = Database(Path("backend/storage/phase7_smoke.db"))
-    if db.db_path.exists():
-        db.close()
-        db.db_path.unlink()
-        db = Database(db.db_path)
-    db.initialize()
     try:
+        if db.db_path.exists():
+            db.close()
+            db.db_path.unlink()
+            db = Database(db.db_path)
+        db.initialize()
         asyncio.run(_run(db, args.video))
     finally:
         db.close()
+        set_summarizer(None)
 
 
 if __name__ == "__main__":

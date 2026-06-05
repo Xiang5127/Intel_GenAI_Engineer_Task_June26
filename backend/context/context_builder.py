@@ -40,6 +40,7 @@ class ContextBuilder:
         generated_files = self._db.get_generated_files(
             session_id, self._recent_file_limit
         )
+        latest_bundle = self._db.get_latest_content_bundle(session_id)
 
         return {
             "session_id": session_id,
@@ -53,6 +54,16 @@ class ContextBuilder:
                 {"file_type": f["file_type"], "file_path": f["file_path"]}
                 for f in generated_files
             ],
+            "latest_content_bundle": (
+                {
+                    "bundle_id": latest_bundle["bundle_id"],
+                    "source_kind": latest_bundle["source_kind"],
+                    "video_id": latest_bundle.get("video_id"),
+                    "query": latest_bundle.get("query"),
+                }
+                if latest_bundle
+                else None
+            ),
         }
 
     @staticmethod

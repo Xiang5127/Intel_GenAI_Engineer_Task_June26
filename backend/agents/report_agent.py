@@ -7,9 +7,10 @@ Source of the bundle (in priority order):
 1. Explicit ``report_data`` / ``slide_data`` in ``inputs`` (e.g. passed from a
    previous SummaryAgent step by the PlanExecutor).
 2. A normalized bundle from ``source_result``.
-3. The latest stored ``summary`` analysis for the current video when no
+3. The latest reusable session content bundle when explicitly requested.
+4. The latest stored ``summary`` analysis for the current video when no
    query-specific content was requested.
-4. Built on demand via :class:`SummaryAgent`.
+5. Built on demand via :class:`SummaryAgent`.
 
 The agent is agnostic to whether the summary was produced by rules or an LLM; it
 only depends on the normalized structure.
@@ -74,8 +75,8 @@ class ReportAgent(BaseAgent):
                     session_id, g["file_type"], g["file_path"], video_id=video_id
                 )
 
-        paths = ", ".join(g["file_path"] for g in generated)
-        summary = f"Generated {len(generated)} file(s): {paths}"
+        labels = ", ".join(g["file_type"].upper() for g in generated)
+        summary = f"Created {labels}."
         return self._ok(intent, summary, {"files": generated})
 
     async def _resolve_bundle(
@@ -97,16 +98,21 @@ class ReportAgent(BaseAgent):
                 "slide_data": source_result["slide_data"],
             }
 
-        if not video_id:
-            return None
+        session_id = context.get("session_id")
+        if session_id and inputs.get("reuse_latest_bundle"):
+            row = self.db.get_latest_content_bundle(session_id)
+            if row:
+                return json.loads(row["bundle_json"])
 
         # 2. Latest stored summary.
-        if not inputs.get("force_summary") and not inputs.get("query") and not source_result:
+        if video_id and not inputs.get("force_summary") and not inputs.get("query") and not source_result:
             row = self.db.get_latest_analysis(video_id, "summary")
             if row:
                 return json.loads(row["result_json"])
 
         # 3. Build on demand via SummaryAgent.
+        if not video_id:
+            return None
         summary_agent = SummaryAgent(self.mcp, self.db)
         result = await summary_agent.handle(
             "SUMMARIZE_VIDEO",

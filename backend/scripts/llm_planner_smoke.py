@@ -49,7 +49,11 @@ def _check_plan(label: str, raw: str, expect_intent: str, expect_clarify: bool) 
 def main() -> None:
     print("== Fallback test (forced unreachable Ollama -> heuristic) ==")
     dead = OllamaPlannerModel(host="http://127.0.0.1:1")  # nothing listens here
-    svc = PlannerService(model=dead, fallback=HeuristicPlannerModel())
+    svc = PlannerService(
+        model=dead,
+        fallback=HeuristicPlannerModel(),
+        enable_deterministic_routing=False,
+    )
     raw = svc.generate_plan("Transcribe the video", _CTX)
     assert svc.model_name == "heuristic_stub", f"expected fallback, got {svc.model_name}"
     _check_plan("fallback/transcribe", raw, "TRANSCRIBE_VIDEO", False)
@@ -64,7 +68,11 @@ def main() -> None:
         return
 
     print(f"  using model: {llm.name}")
-    svc_llm = PlannerService(model=llm, fallback=HeuristicPlannerModel())
+    svc_llm = PlannerService(
+        model=llm,
+        fallback=HeuristicPlannerModel(),
+        enable_deterministic_routing=False,
+    )
     for query, intent, clarify in _CASES:
         raw = svc_llm.generate_plan(query, _CTX)
         _check_plan(query, raw, intent, clarify)

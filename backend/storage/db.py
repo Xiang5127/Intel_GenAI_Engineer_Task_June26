@@ -1,7 +1,7 @@
 """SQLite storage layer for the Intel Local Video AI MVP (Phase 1).
 
 Provides database initialization from ``schema.sql`` and typed CRUD helpers for
-sessions, chat messages, videos, video analysis, and generated files.
+sessions, chat messages, videos, analyses, reusable content bundles, and files.
 
 All timestamps are unix epoch seconds (int). No business logic lives here; the
 SessionManager and agents build on top of these primitives.
@@ -297,6 +297,53 @@ class Database:
                 (session_id, limit if limit and limit > 0 else -1),
             ).fetchall()
         return [dict(r) for r in rows]
+
+    # ------------------------------------------------------------------ #
+    # reusable content bundles
+    # ------------------------------------------------------------------ #
+    def save_content_bundle(
+        self,
+        session_id: str,
+        source_kind: str,
+        bundle_json: str,
+        *,
+        video_id: Optional[str] = None,
+        query: Optional[str] = None,
+    ) -> dict[str, Any]:
+        bundle_id = _new_id("bundle")
+        ts = _now()
+        with self._lock:
+            self._conn.execute(
+                """
+                INSERT INTO content_bundles (bundle_id, session_id, video_id,
+                                             source_kind, query, bundle_json, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (bundle_id, session_id, video_id, source_kind, query, bundle_json, ts),
+            )
+            self._conn.commit()
+        return {
+            "bundle_id": bundle_id,
+            "session_id": session_id,
+            "video_id": video_id,
+            "source_kind": source_kind,
+            "query": query,
+            "bundle_json": bundle_json,
+            "created_at": ts,
+        }
+
+    def get_latest_content_bundle(self, session_id: str) -> Optional[dict[str, Any]]:
+        with self._lock:
+            row = self._conn.execute(
+                """
+                SELECT * FROM content_bundles
+                WHERE session_id = ?
+                ORDER BY created_at DESC, rowid DESC
+                LIMIT 1
+                """,
+                (session_id,),
+            ).fetchone()
+        return dict(row) if row else None
 
 
 def init_db(db_path: Optional[os.PathLike[str] | str] = None) -> Database:

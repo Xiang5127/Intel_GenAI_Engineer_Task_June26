@@ -59,7 +59,21 @@ CREATE TABLE IF NOT EXISTS generated_files (
     FOREIGN KEY (video_id) REFERENCES videos(video_id) ON DELETE SET NULL
 );
 
+-- Reusable normalized report/slide content. Generated files remain outputs only.
+CREATE TABLE IF NOT EXISTS content_bundles (
+    bundle_id    TEXT PRIMARY KEY,
+    session_id   TEXT NOT NULL,
+    video_id     TEXT,
+    source_kind  TEXT NOT NULL,
+    query        TEXT,
+    bundle_json  TEXT NOT NULL,
+    created_at   INTEGER NOT NULL,
+    FOREIGN KEY (session_id) REFERENCES sessions(session_id) ON DELETE CASCADE,
+    FOREIGN KEY (video_id) REFERENCES videos(video_id) ON DELETE SET NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_chat_messages_session ON chat_messages(session_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_videos_session ON videos(session_id);
 CREATE INDEX IF NOT EXISTS idx_video_analysis_video ON video_analysis(video_id, analysis_type);
 CREATE INDEX IF NOT EXISTS idx_generated_files_session ON generated_files(session_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_content_bundles_session ON content_bundles(session_id, created_at);

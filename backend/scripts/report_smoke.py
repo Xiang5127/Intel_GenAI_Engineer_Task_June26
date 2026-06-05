@@ -19,6 +19,7 @@ from backend.agents.report_agent import ReportAgent
 from backend.agents.summary_agent import SummaryAgent
 from backend.context.context_builder import ContextBuilder
 from backend.mcp_clients.mcp_client_manager import MCPClientManager
+from backend.services.summarization import RuleBasedSummarizer, set_summarizer
 from backend.session.session_manager import SessionManager
 from backend.storage.db import Database
 
@@ -91,6 +92,7 @@ async def _run(db: Database) -> None:
 
 
 def main() -> None:
+    set_summarizer(RuleBasedSummarizer())
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         db = Database(Path(tmp) / "phase6.db")
         db.initialize()
@@ -98,6 +100,7 @@ def main() -> None:
             asyncio.run(_run(db))
         finally:
             db.close()
+            set_summarizer(None)
 
 
 if __name__ == "__main__":

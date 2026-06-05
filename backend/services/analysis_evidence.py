@@ -5,11 +5,11 @@ from __future__ import annotations
 import json
 from typing import Any, Iterable, Optional
 
-MAX_TRANSCRIPT_CHARS = 12000
-MAX_OCR_CHARS = 5000
+MAX_TRANSCRIPT_CHARS = 6000
+MAX_OCR_CHARS = 2500
 MAX_SOURCE_CHARS = 5000
-MAX_CHAT_MESSAGES = 20
-MAX_CHAT_MESSAGE_CHARS = 1200
+MAX_CHAT_MESSAGES = 12
+MAX_CHAT_MESSAGE_CHARS = 600
 
 
 def _bounded(value: Any, limit: int) -> str:
