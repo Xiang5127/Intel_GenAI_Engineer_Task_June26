@@ -27,6 +27,8 @@ backend/outputs/frames/*
 backend/outputs/reports/*
 backend/outputs/analysis_json/*
 !backend/outputs/**/.gitkeep
+!backend/outputs/reports/sample_video_discussion_summary.pdf
+!backend/outputs/reports/sample_video_keypoints.pptx
 
 # Node / Tauri
 node_modules/

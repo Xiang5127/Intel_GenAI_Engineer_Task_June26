@@ -169,8 +169,14 @@ Sample inputs are stored in [`test_folder/`](./test_folder/).
 Generated PDFs and PowerPoints are written to
 [`backend/outputs/reports/`](./backend/outputs/reports/).
 
-Generated artifacts are local demo outputs and are not committed to the repo.
-Run the demo queries to recreate fresh files.
+Two generated showcase artifacts are included in the repo. They were created
+from the sample video using the exact PowerPoint and PDF sample queries above:
+
+- [`sample_video_keypoints.pptx`](./backend/outputs/reports/sample_video_keypoints.pptx)
+- [`sample_video_discussion_summary.pdf`](./backend/outputs/reports/sample_video_discussion_summary.pdf)
+
+Other generated artifacts are local demo outputs and are ignored by git. Run the
+demo queries to recreate fresh files.
 
 ## Verification
 
