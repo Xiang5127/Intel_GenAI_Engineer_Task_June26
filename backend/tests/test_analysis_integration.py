@@ -10,7 +10,7 @@ from pathlib import Path
 from backend.agents.base_agent import AgentResult
 from backend.agents.summary_agent import SummaryAgent
 from backend.planner.message_orchestrator import MessageOrchestrator
-from backend.planner.plan_executor import PlanExecutor
+from backend.planner.plan_executor import ExecutionResult, PlanExecutor
 from backend.planner.plan_schema import Plan
 from backend.planner.plan_validator import PlanValidator
 from backend.planner.planner_service import HeuristicPlannerModel, PlannerService
@@ -429,6 +429,37 @@ class AgentIntegrationTests(unittest.TestCase):
 
 
 class ResponseSynthesisTests(unittest.TestCase):
+    def test_transcription_response_returns_full_transcript(self) -> None:
+        transcript = " ".join(f"word{i}" for i in range(180))
+        plan = Plan.model_validate({
+            "confidence": 0.95,
+            "steps": [{
+                "step_id": "transcript",
+                "intent": "TRANSCRIBE_VIDEO",
+                "agent": "transcription_agent",
+                "inputs": {},
+                "depends_on": [],
+            }],
+        })
+        result = ExecutionResult(
+            "Transcript: word0 word1...",
+            step_results={
+                "transcript": AgentResult(
+                    "transcription_agent",
+                    "TRANSCRIBE_VIDEO",
+                    True,
+                    "Transcript: word0 word1...",
+                    {"transcript": {"text": transcript}},
+                )
+            },
+        )
+
+        answer = compose_response(plan, result)
+
+        self.assertTrue(answer.startswith("Transcript:\n\n"))
+        self.assertIn("word179", answer)
+        self.assertEqual(answer, f"Transcript:\n\n{transcript}")
+
     def test_concise_composer_hides_internal_metadata(self) -> None:
         plan = Plan.model_validate({
             "confidence": 0.95,

@@ -26,6 +26,15 @@ def compose_response(plan: Plan, execution: ExecutionResult) -> str:
             return f"Created {created} from the latest report content."
         return f"Created {created}."
 
+    if (
+        Intent.TRANSCRIBE_VIDEO in intents
+        and Intent.SUMMARIZE_VIDEO not in intents
+        and Intent.SUMMARIZE_CHAT_HISTORY not in intents
+    ):
+        transcript = _transcript_text(execution)
+        if transcript:
+            return f"Transcript:\n\n{transcript}"
+
     summary_result = next(
         (
             result
@@ -58,6 +67,21 @@ def _answer_from_bundle(bundle: dict[str, Any]) -> str:
         if bullets:
             parts.append(" ".join(f"- {item}" for item in bullets))
     return " ".join(parts)
+
+
+def _transcript_text(execution: ExecutionResult) -> str:
+    result = next(
+        (
+            item
+            for item in reversed(list(execution.step_results.values()))
+            if item.intent == Intent.TRANSCRIBE_VIDEO.value and item.success
+        ),
+        None,
+    )
+    if not result:
+        return ""
+    transcript = result.data.get("transcript") or {}
+    return str(transcript.get("text") or "").strip()
 
 
 def _sanitize(text: str) -> str:

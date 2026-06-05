@@ -1,242 +1,112 @@
-# CHECKPOINTS
+# Implementation Summary
 
-Per-phase status of the **Intel Local Video AI MVP** backend. All work to date is backend-only; the React + Tauri frontend (Phase 8) is **not started**. See `HANDOFF_TO_CODEX.md` for the forward plan.
+This document summarizes the completed Intel Local Video AI MVP. The main
+runbook is in [`README.md`](./README.md); this file provides a compact record of
+the implemented system areas and verification commands.
 
-All commands assume the repository root `e:\Intel Task` and that the `backend` package is importable (run from root). A test video lives at `test_folder/test_video.mp4`.
+## Completed System Areas
 
----
+### Foundation and Storage
 
-## Phase 0 — Project Skeleton
-- **Status:** Completed
-- **Commit:** `b66f60b`
-- **Summary:** Established the repository structure, gRPC proto contract, SQLite schema, output folders, and the initial README from the blueprint.
-- **Files/folders created or modified:**
-  - `README.md`
-  - `backend/proto/video_ai.proto`
-  - `backend/storage/schema.sql`
-  - `backend/outputs/{audio,frames,reports,analysis_json}/`
-  - Package skeleton: `backend/{__init__.py, storage/, session/, context/, services/, runtimes/, mcp_servers/, mcp_clients/, agents/, planner/}`
-- **How to manually test:**
-  - Confirm structure exists: `dir backend` (PowerShell) shows the package folders above.
-  - `python -c "import ast; ast.parse(open('backend/proto/video_ai.proto').read())"` is NOT applicable; instead just verify `backend/proto/video_ai.proto` and `backend/storage/schema.sql` open and read.
-- **Known issues / limitations:**
-  - No runnable code yet; skeleton only. Setup sections of README were placeholders.
+- SQLite-backed sessions, chat history, selected video state, video analysis
+  results, generated files, and reusable content bundles.
+- Compact context builder for planner and agent execution.
+- Local outputs stored under `backend/outputs/`.
 
----
+### gRPC Backend
 
-## Phase 1 — Backend Storage / Session / Context
-- **Status:** Completed
-- **Commit:** `26ba72d`
-- **Summary:** Implemented the SQLite storage layer (`Database`), the `SessionManager` over it, and the `ContextBuilder` that assembles a compact planner context. Added a Phase 1 CLI smoke test.
-- **Files/folders created or modified:**
-  - `backend/storage/db.py`
-  - `backend/session/session_manager.py`
-  - `backend/context/context_builder.py`
-  - `backend/main.py` (CLI `smoke` subcommand)
-- **How to manually test:**
-  - `python -m backend.main smoke --db backend/storage/smoke.db --reset`
-  - Expect: session created, dummy video attached, a user/assistant exchange persisted, recent messages reloaded, and a printed context JSON ending with `Phase 1 smoke test completed successfully.`
-- **Known issues / limitations:**
-  - Single shared SQLite connection guarded by a lock (fine for MVP scale; not tuned for high concurrency).
+- Python `VideoAIService` with:
+  - `CreateSession`
+  - `UploadVideo`
+  - `SendMessage`
+  - `GetChatHistory`
+- The gRPC contract is defined in `backend/proto/video_ai.proto`.
+- Generated Python stubs live in `backend/generated/`.
 
----
+### Local MCP Tools
 
-## Phase 2 — gRPC Skeleton
-- **Status:** Completed
-- **Commit:** `cebaac1`
-- **Summary:** Stood up the `VideoAIService` gRPC server implementing `CreateSession`, `UploadVideo`, `SendMessage` (dummy at the time), and `GetChatHistory` over the Phase 1 storage. Generated stubs live in `backend/generated/`.
-- **Files/folders created or modified:**
-  - `backend/grpc_server.py`
-  - `backend/generated/video_ai_pb2.py`, `backend/generated/video_ai_pb2_grpc.py`
-  - `backend/main.py` (`serve` subcommand)
-  - `backend/scripts/grpc_smoke.py`
-- **How to manually test:**
-  - End-to-end RPC test: `python -m backend.scripts.grpc_smoke`
-  - Or run the server: `python -m backend.main serve --address 127.0.0.1:50051`
-  - Expect: all four RPCs exercised successfully (CreateSession -> UploadVideo -> SendMessage -> GetChatHistory).
-- **Known issues / limitations:**
-  - Required `check_same_thread=False` + `RLock` on the DB because gRPC dispatches handlers on worker threads.
-  - `SendMessage` originally returned a dummy response; replaced by the planner pipeline in Phase 7.
+- MCP servers run locally over stdio and are spawned by the backend.
+- Video tools provide metadata, audio extraction, and frame sampling.
+- Transcription tools run local faster-whisper inference.
+- Vision tools run OpenVINO object detection, OpenVINO OCR, and OpenCV graph
+  heuristics.
+- Report tools generate local PDF and PowerPoint files.
 
----
+### Transcription
 
-## Phase 3 — Video MCP Server
-- **Status:** Completed
-- **Commit:** `48321d5`
-- **Summary:** First **real local MCP server** (FastMCP over stdio) exposing video metadata, audio extraction, and frame sampling. Backed by OpenCV + `imageio-ffmpeg`. Added the `MCPClientManager` that spawns/connects MCP servers as subprocesses.
-- **Files/folders created or modified:**
-  - `backend/services/video_processing.py`
-  - `backend/mcp_servers/video_mcp_server.py`
-  - `backend/mcp_clients/mcp_client_manager.py`
-  - `backend/scripts/video_mcp_smoke.py`
-- **Exposed tools:** `get_video_metadata`, `extract_audio`, `extract_frames`
-- **How to manually test:**
-  - `python -m backend.scripts.video_mcp_smoke`
-  - Expect: a synthetic clip is generated, metadata returned, audio probe and frame extraction succeed (frames saved under `backend/outputs/frames/`).
-- **Known issues / limitations:**
-  - `extract_audio` treats any ffmpeg failure with empty output as `has_audio=False` (masks real ffmpeg errors). Tracked for a later fix.
+- Uses faster-whisper with default model size `tiny`.
+- Extracts audio from selected videos and persists transcript analysis.
+- Supports local model reuse after the initial model download.
 
----
+### OpenVINO Vision
 
-## Phase 4 — Transcription MCP + Agent
-- **Status:** Completed
-- **Commit:** `61f7272`
-- **Summary:** Local speech-to-text via **faster-whisper** behind a transcription MCP server, plus a `TranscriptionAgent` that orchestrates audio extraction -> transcription, caches results, and persists them.
-- **Files/folders created or modified:**
-  - `backend/runtimes/whisper_runtime.py`
-  - `backend/services/speech_to_text.py`
-  - `backend/mcp_servers/transcription_mcp_server.py`
-  - `backend/agents/base_agent.py`, `backend/agents/transcription_agent.py`
-  - `backend/scripts/transcription_smoke.py`
-- **Exposed tools:** `transcribe_audio`
-- **Models / env:** `WHISPER_MODEL_SIZE` (default `tiny`), `WHISPER_COMPUTE_TYPE` (default `int8`). Model downloaded once, then offline (`HF_HUB_OFFLINE=1`).
-- **How to manually test:**
-  - `python -m backend.scripts.transcription_smoke --video "test_folder/test_video.mp4"`
-  - Expect: audio extracted, transcript text + segments returned and persisted as `transcript` analysis.
-- **Known issues / limitations:**
-  - Native ML libs (ctranslate2 / onnxruntime / av) write to stdout and can deadlock if initialized off the main thread. Mitigated by `_protect_stdio()` (fd-level stdout redirect) and warming the model on the **main thread** at server startup.
-  - First run requires internet to download the Whisper model.
+- Uses local OpenVINO IR models for object detection and OCR.
+- Model setup command:
 
----
+```powershell
+python -m backend.scripts.setup_openvino_models
+```
 
-## Phase 5 — Vision MCP + Agent
-- **Status:** Completed (fallback detection/OCR)
-- **Commit:** `3b1249b`
-- **Summary:** Vision MCP server exposing object detection, object counting, OCR, and heuristic graph detection, with an OpenVINO abstraction and OpenCV fallbacks. `VisionAgent` samples frames and runs the analyses, persisting `objects` / `ocr` / `graphs` results.
-- **Files/folders created or modified:**
-  - `backend/services/vision_analysis.py`, `backend/services/graph_detection.py`
-  - `backend/mcp_servers/vision_mcp_server.py`
-  - `backend/agents/vision_agent.py`
-  - `backend/scripts/vision_smoke.py`
-- **Exposed tools:** `detect_objects`, `count_objects`, `run_ocr`, `detect_graphs`
-- **Models / env:** `VISION_DET_MODEL` (path to an OpenVINO IR `.xml` to enable real detection). OCR backend optional.
-- **How to manually test:**
-  - `python -m backend.scripts.vision_smoke --video "test_folder/test_video.mp4"`
-  - Expect: frames sampled, detection/OCR/graph results returned (in fallback mode, detection/OCR report "unavailable" while graph heuristic still runs).
-- **Known issues / limitations:**
-  - **No IR model bundled** -> detection and OCR currently run in fallback mode only (no real labels). Provide `VISION_DET_MODEL` and an OCR backend to enable.
-  - Graph detection is heuristic, not a trained classifier.
+- Object detection uses `ssdlite_mobilenet_v2_fp16`.
+- OCR uses `horizontal-text-detection-0001` and `text-recognition-0012`.
+- OpenCV fallback keeps the app usable if vision models are unavailable.
 
----
+### Reports
 
-## Phase 6 — Report MCP + Summary/Report Agents
-- **Status:** Completed (rule-based summarization)
-- **Commit:** `c41076a`
-- **Summary:** Report generation via **ReportLab (PDF)** and **python-pptx (PPTX)**, fed by a normalized `report_data` / `slide_data` structure. `SummaryAgent` builds the normalized structure using a `Summarizer` interface (currently `RuleBasedSummarizer`); `ReportAgent` consumes it and generates files, independent of how the summary was produced.
-- **Files/folders created or modified:**
-  - `backend/services/summarization.py` (Summarizer interface + RuleBasedSummarizer)
-  - `backend/services/report_generator.py`
-  - `backend/mcp_servers/report_mcp_server.py`
-  - `backend/agents/summary_agent.py`, `backend/agents/report_agent.py`
-  - `backend/scripts/report_smoke.py`
-- **Exposed tools:** `generate_pdf_report`, `generate_pptx_report`
-- **How to manually test:**
-  - `python -m backend.scripts.report_smoke`
-  - Expect: a PDF and PPTX produced under `backend/outputs/reports/` and recorded as generated files.
-- **Known issues / limitations:**
-  - Real OpenVINO object detection and OCR models remain separate required work.
+- PDF reports are generated with ReportLab.
+- PowerPoint decks are generated with python-pptx.
+- Generated files are written to `backend/outputs/reports/`.
+- Repeat exports can reuse the latest normalized report content.
 
----
+### Planner and Local LLM
 
-## Phase 7 — Planner / Validator / Executor
-- **Status:** Completed
-- **Commits:** `6369cb0` (deterministic heuristic planner) -> `d5165fc` (local LLM planner via Ollama)
-- **Summary:** Implemented the JSON planning pipeline. The planner produces a JSON execution plan; `PlanValidator` (Pydantic + rules) checks it; `PlanExecutor` runs steps deterministically through the agent registry; `MessageOrchestrator` ties it into `SendMessage`. The planner is a swappable `PlannerModel`: **Ollama `qwen2.5:3b`** is the default, with an automatic **heuristic fallback** when Ollama is unreachable.
-- **Files/folders created or modified:**
-  - `backend/planner/plan_schema.py`, `backend/planner/planner_prompt.py`
-  - `backend/planner/planner_service.py`, `backend/planner/ollama_planner_model.py`
-  - `backend/planner/plan_validator.py`, `backend/planner/clarification_manager.py`
-  - `backend/planner/plan_executor.py`, `backend/planner/message_orchestrator.py`
-  - `backend/agents/clarification_agent.py`
-  - `backend/grpc_server.py` (wired `SendMessage` to the orchestrator)
-  - `backend/session/session_manager.py` (public `db` property)
-  - `backend/scripts/planner_smoke.py`, `backend/scripts/llm_planner_smoke.py`
-- **Env:** `PLANNER_BACKEND` (`ollama` default | `heuristic`), `OLLAMA_HOST` (`http://localhost:11434`), `OLLAMA_MODEL` (`qwen2.5:3b`), `OLLAMA_TIMEOUT` (`120`).
-- **How to manually test:**
-  - One-time: install Ollama + `ollama pull qwen2.5:3b`.
-  - LLM routing + fallback: `python -m backend.scripts.llm_planner_smoke` (skips the LLM portion cleanly if Ollama is down; the fallback test always runs).
-  - Deterministic end-to-end execution: `python -m backend.scripts.planner_smoke --video "test_folder/test_video.mp4"` (pinned to the heuristic planner). Validates the 4 blueprint cases: transcribe, object analysis, count + PDF, and "Make a report" -> clarification.
-- **Known issues / limitations:**
-  - LLM plans vary even at `temperature=0`; tests assert the expected intent is **present**, not strictly first.
-  - First request after a cold start is slow (model load), hence the 120s default timeout.
-  - Multi-turn clarification stitching is minimal (a pending question is persisted; the next message is planned fresh).
+- Common workflows are routed deterministically for reliability.
+- Ollama `qwen2.5:3b` provides local planning and evidence-aware summaries.
+- Rule-based fallbacks keep the app usable when Ollama is unavailable.
+- Clarification prompts are supported for underspecified requests.
 
----
+### Frontend Desktop App
 
-## Phase 8 — React + Tauri Frontend
-- **Status:** Implemented
-- **Summary:** Added a standalone React + TypeScript + Tauri v2 desktop frontend.
-  React owns UI and active-session state; a thin Rust `tonic` bridge calls the
-  existing Python gRPC service without changing the proto or backend architecture.
-- **Implemented:**
-  - MP4 picker and upload flow.
-  - Chat history loading, optimistic messages, clarification display, and retry/error states.
-  - Generated PDF/PPTX panel with restricted native file opening.
-  - Versioned local persistence for one active session, selected video, and generated files.
-  - Vendored `protoc`, shared lazy gRPC channel, structured command errors, and endpoint override.
-  - React unit tests, Rust unit tests, application icons, and frontend documentation.
-- **How to manually test:**
-  - Start backend: `$env:PLANNER_BACKEND="heuristic"; python -m backend.main serve`
-  - Start desktop app: `cd frontend; npm run tauri dev`
-  - Verification: `npm test`, `npm run build`, `cargo test --manifest-path src-tauri/Cargo.toml`,
-    `cargo check --manifest-path src-tauri/Cargo.toml`, and `npm run tauri build`.
-- **Known issues / limitations:**
-  - Backend startup remains manual during development.
-  - The current proto has no session-list or generated-file-history RPC, so the UI resumes one locally cached active session.
-  - Real OpenVINO object detection and OCR remain required follow-up work after frontend-led integration testing.
+- React + TypeScript + Tauri v2 desktop UI.
+- Rust `tonic` bridge calls the Python gRPC backend.
+- Supports MP4 selection, upload, chat, clarification prompts, generated-file
+  display, and restricted local file opening.
+- Persists one active session locally for restart recovery.
 
----
+## Current MVP Capabilities
 
-## Phase 9 — Real Local LLM Analysis
-- **Status:** Implemented
-- **Summary:** Added a shared local Ollama transport, evidence-aware structured
-  summaries, real chat-history summaries, automatic evidence prerequisites,
-  query-aware reports, and an optional grounded answer synthesizer. Analysis remains
-  local and falls back to deterministic output when Ollama fails.
-- **Interfaces:** gRPC proto and MCP boundaries are unchanged.
-- **Env:** `ANALYSIS_BACKEND` (`ollama` default | `rule_based`),
-  `ANALYSIS_MODEL` (defaults to `OLLAMA_MODEL`), and `ANALYSIS_TIMEOUT`
-  (defaults to `OLLAMA_TIMEOUT`).
-- **Verification:**
-  - `python -m unittest discover -s backend/tests -v`
-  - `python -m backend.scripts.llm_analysis_smoke`
-  - Existing planner and report smoke tests remain supported.
+- Analyze a local video through chat.
+- Detect objects and OCR text using local OpenVINO models.
+- Transcribe speech locally.
+- Summarize video content and chat history.
+- Generate PDF and PowerPoint artifacts.
+- Preserve local chat/session state.
+- Run end-to-end without cloud APIs.
 
----
+## Known Limitations
 
-## Phase 10 - Interaction Reliability and Response Speed
-- **Status:** Implemented
-- **Summary:** Added deterministic routing for common workflows, reusable
-  normalized content bundles, invalid-plan repair, concise deterministic final
-  responses, and smaller bounded Ollama analysis prompts.
-- **Behavior fixes:**
-  - A PDF followed by `Generate a PowerPoint` reuses the latest report content.
-  - Generated PDF/PPTX files remain outputs and are never read as sources.
-  - `Summarize our discussion so far and generate a PDF` works without a video.
-  - Known workflows skip the LLM planner; repeat exports skip Ollama entirely.
-  - Replies no longer expose model, planner, agent, or file-path details.
-- **Storage:** Added `content_bundles` for reusable `report_data` / `slide_data`.
-- **Env:** `ANALYSIS_MAX_TOKENS` defaults to `700`.
-- **Verification:**
-  - `python -m unittest discover -s backend/tests -v`
-  - `python -m backend.scripts.report_smoke`
-  - `python -m backend.scripts.planner_smoke --video "test_folder/test_video.mp4"`
-  - `python -m backend.scripts.llm_analysis_smoke`
-- **Remaining limitation:** The first uncached local-Ollama analysis may still be
-  slow on CPU. OpenVINO object detection/OCR will not reduce Ollama generation time.
+- Backend startup is manual for the MVP demo.
+- First local LLM calls can be slow on CPU.
+- OpenVINO result quality depends on the installed model files.
+- Chart detection is heuristic.
+- There is no installer, packaged backend launcher, or session browser.
 
----
+## Verification Commands
 
-## Phase 11 - Final Reliable MVP Vision Path
-- **Status:** Implemented
-- **Summary:** Added validated OpenVINO model configuration for SSD-style object
-  detection and OCR, explicit fallback/error metadata, OCR text deduplication,
-  stricter ffmpeg audio error handling, and an interview demo smoke flow.
-- **Env:** `VISION_DET_MODEL`, `VISION_DET_CONF`, `VISION_OCR_DET_MODEL`,
-  `VISION_OCR_REC_MODEL`, `VISION_OCR_ALPHABET`, `VISION_OCR_CONF`.
-- **Verification:**
-  - `python -m unittest discover -s backend/tests -v`
-  - `python -m backend.scripts.vision_smoke --video "test_folder/test_video.mp4"`
-  - `python -m backend.scripts.interview_demo_smoke --video "test_folder/test_video.mp4"`
-- **Note:** The OpenVINO-enabled smoke requires local IR `.xml/.bin` model files
-  supplied by env vars; model files are not committed to the repo.
+Run from the repository root:
+
+```powershell
+python -m unittest discover -s backend/tests -v
+python -m backend.scripts.vision_smoke --video "test_folder/test_video.mp4"
+python -m backend.scripts.interview_demo_smoke --video "test_folder/test_video.mp4"
+```
+
+Frontend verification:
+
+```powershell
+cd frontend
+npm test
+npm run build
+cargo test --manifest-path src-tauri/Cargo.toml
+cargo check --manifest-path src-tauri/Cargo.toml
+```

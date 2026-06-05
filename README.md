@@ -1,234 +1,190 @@
 # Intel Local Video AI Desktop App
 
-A **fully local, offline** AI desktop application for analyzing short `.mp4` videos through a chat interface. No cloud APIs, no public MCP servers, no vector DB.
+A fully local desktop application for analyzing `.mp4` videos through a chat
+interface. The app uses a React/Tauri frontend, a Python gRPC backend, local MCP
+servers, OpenVINO, faster-whisper, Ollama, and SQLite. No cloud APIs are used.
 
-> **Current status:** The desktop frontend, local LLM analysis, interaction reliability, and real OpenVINO vision integration are implemented. Run the model setup command below once to download the local IR model files.
-> - **[`HANDOFF_TO_CODEX.md`](./HANDOFF_TO_CODEX.md)** — architecture, how to run, gRPC/DB contracts, agents/MCP tools, constraints, and what to build next.
-> - **[`CHECKPOINTS.md`](./CHECKPOINTS.md)** — per-phase status, files touched, manual test steps, and known limitations.
+## Application Screenshot
 
-## What it will do
+![Application Screenshot](./Application%20Screenshot.jpeg)
 
-- Select a local `.mp4` video.
-- Ask natural-language questions about it.
-- Transcribe audio (local Whisper / faster-whisper).
-- Analyze sampled frames (OpenVINO object detection / OpenVINO OCR / heuristic graph detection).
+## What It Does
+
+- Select and upload a local `.mp4` video.
+- Ask natural-language questions about the video.
+- Transcribe speech with a local Whisper model.
+- Detect objects with OpenVINO.
+- Read on-screen text with OpenVINO OCR.
+- Detect chart-like visuals with OpenCV heuristics.
+- Summarize video content and chat history.
 - Generate PDF and PowerPoint reports.
-- Persist chat history across restarts.
+- Persist sessions and chat history locally.
 
 ## Architecture
 
 ```txt
-React UI
-  | Tauri commands
-Rust tonic gRPC bridge
-  | gRPC (proto contract)
-Python Backend Host
-  ├── gRPC Server          (thin API boundary)
-  ├── SessionManager        (session / current video / pending clarification)
-  ├── SQLite Storage        (sessions, chat, videos, analysis, generated files)
-  ├── ContextBuilder        (compact planner context)
-  ├── PlannerService        (deterministic routes + local LLM JSON fallback)
-  ├── PlanValidator         (deterministic, Pydantic)
-  ├── ClarificationManager  (elicitation questions)
-  ├── PlanExecutor          (deterministic step runner)
-  ├── Agent Registry        (transcription / vision / summary / report)
-  └── MCP Client Manager    (spawns / connects local MCP servers)
-        | MCP local stdio/process transport
-Local MCP Servers
-  ├── video_mcp_server
-  ├── transcription_mcp_server
-  ├── vision_mcp_server
-  └── report_mcp_server
+React + Tauri Desktop UI
         |
-Local Tools / Models (ffmpeg/OpenCV, Whisper, OpenVINO, OCR, ReportLab/python-pptx, SQLite)
+        | Tauri commands
+        v
+Rust gRPC Bridge (tonic)
+        |
+        | gRPC: backend/proto/video_ai.proto
+        v
+Python Backend
+  - gRPC API
+  - Session and SQLite storage
+  - Planner and agent executor
+  - Local MCP client manager
+        |
+        | local stdio MCP
+        v
+Local MCP Servers
+  - Video tools: metadata, audio extraction, frame sampling
+  - Transcription tools: faster-whisper
+  - Vision tools: OpenVINO object detection, OCR, OpenCV graph heuristics
+  - Report tools: PDF and PowerPoint generation
+        |
+        v
+Local Models and Artifacts
+  - OpenVINO IR models
+  - Ollama qwen2.5:3b
+  - SQLite database
+  - Generated PDFs and PPTX files
 ```
 
-## Repository layout
+## Folder Structure
 
 ```txt
-.
-├── backend/
-│   ├── proto/video_ai.proto        # gRPC contract (CreateSession, UploadVideo, SendMessage, GetChatHistory)
-│   ├── storage/schema.sql          # SQLite schema
-│   ├── storage/                    # db access (Phase 1)
-│   ├── session/                    # SessionManager (Phase 1)
-│   ├── context/                    # ContextBuilder (Phase 1)
-│   ├── services/                   # tool-backing logic (Phase 3+)
-│   ├── runtimes/                   # local model runtimes (Phase 4+)
-│   ├── mcp_servers/                # local MCP servers (Phase 3+)
-│   ├── mcp_clients/                # MCP client manager (Phase 3+)
-│   ├── agents/                     # agents (Phase 4+)
-│   ├── planner/                    # planner / validator / executor (Phase 7)
-│   ├── outputs/{audio,frames,reports,analysis_json}/
-│   └── requirements.txt
-└── frontend/                       # React + Tauri app (Phase 8)
+frontend/                    React + Tauri desktop app
+backend/proto/               gRPC contract
+backend/grpc_server.py       Python gRPC service
+backend/agents/              Transcription, vision, summary, report agents
+backend/mcp_servers/         Local FastMCP servers
+backend/services/            Video, vision, summary, report logic
+backend/runtimes/            Local model runtime wrappers
+backend/storage/             SQLite schema and database access
+backend/outputs/reports/     Generated PDF and PowerPoint files
+test_folder/                 Sample input videos
 ```
 
-## Phases (per `intel_video_ai_windsurf_blueprint/05_PHASE_PROMPTS.md`)
+## Implemented Features
 
-0. **Skeleton (this phase)** — structure, proto, schema, outputs, README.
-1. Storage + Session + ContextBuilder + CLI smoke test.
-2. gRPC server and persisted chat/session transport.
-3. Video MCP server (metadata / audio / frames).
-4. Transcription MCP + agent (local Whisper).
-5. Vision MCP + agent (objects / OCR / graphs, OpenVINO).
-6. Report MCP + summary/report agents (PDF / PPTX).
-7. Planner / Validator / Executor (JSON plan pipeline).
-8. React + Tauri frontend. **Implemented.**
-9. Real local LLM analysis. **Implemented.**
-10. Interaction reliability and response speed. **Implemented.**
-11. Real OpenVINO object detection and OCR. **Implemented.**
+| Component | Implementation |
+| --- | --- |
+| Frontend | React + TypeScript + Tauri desktop UI |
+| Desktop bridge | Rust `tonic` gRPC client |
+| Backend API | Python gRPC service |
+| Video processing | OpenCV + imageio/ffmpeg |
+| Transcription | faster-whisper, default `tiny`, local model |
+| Vision | OpenVINO object detection + OpenVINO OCR, with OpenCV fallback |
+| Local LLM | Ollama `qwen2.5:3b`, with deterministic fallback |
+| Reports | ReportLab PDF and python-pptx PowerPoint generation |
+| Storage | SQLite sessions, chat, analysis, generated files |
+| MCP | Local FastMCP stdio servers for video, transcription, vision, reports |
 
-## Setup
+## Known Limitations and Future Improvements
 
-### Prerequisites
-- Python 3.x
-- Node.js 20+
-- Rust stable, Microsoft C++ Build Tools, and Edge WebView2
-- ffmpeg — preferred for Phase 3 (fallback: OpenCV / `imageio-ffmpeg`)
+Known limitations:
 
-### Run backend
-See **[`HANDOFF_TO_CODEX.md` §5](./HANDOFF_TO_CODEX.md)** for full setup. Quick start (from repo root):
-```powershell
-python -m pip install -r backend/requirements.txt
-ollama pull qwen2.5:3b          # one-time; or set PLANNER_BACKEND=heuristic to skip the LLM
-python -m backend.main serve --address 127.0.0.1:50051
-```
+- The backend is started manually for the MVP demo.
+- The first local LLM request can be slow on CPU.
+- Object detection and OCR quality depend on the selected OpenVINO models.
+- Chart detection is heuristic, not a trained chart classifier.
+- There is no installer or packaged backend launcher yet.
+- The frontend resumes one active session; there is no session browser.
 
-Ollama produces evidence-aware summaries, query-specific reports, and
-chat-history summaries. Common workflows are routed deterministically, and
-completed plans use short deterministic responses instead of a second LLM call.
-To use deterministic analysis output too, set `ANALYSIS_BACKEND=rule_based`.
+With more time, the app could be extended with:
 
-Optional analysis overrides:
-```powershell
-$env:ANALYSIS_MODEL="qwen2.5:3b"  # defaults to OLLAMA_MODEL
-$env:ANALYSIS_TIMEOUT="120"       # defaults to OLLAMA_TIMEOUT
-$env:ANALYSIS_MAX_TOKENS="700"    # structured summary generation cap
-```
+- Automatic backend startup from Tauri.
+- A model management UI for local OpenVINO and Ollama models.
+- Stronger multi-turn clarification handling.
+- Richer PDF and PowerPoint templates.
+- Domain-specific OpenVINO models for more accurate detection.
+- Progress indicators for long-running analysis steps.
 
-Optional OpenVINO vision models:
-```powershell
-python -m backend.scripts.setup_openvino_models
-```
+## Quick Setup
 
-That downloads real local IR models into `backend/models/openvino/`, which the backend auto-discovers on startup:
-- Object detection: `ssdlite_mobilenet_v2_fp16`
-- OCR text detection: `horizontal-text-detection-0001`
-- OCR text recognition: `text-recognition-0012`
+Use two command prompts:
 
-Explicit overrides still work:
-```powershell
-$env:VISION_MODELS_DIR="E:\Intel Task\backend\models\openvino"
-$env:VISION_DET_MODEL="C:\models\object-detection.xml"
-$env:VISION_OCR_DET_MODEL="C:\models\text-detection.xml"
-$env:VISION_OCR_REC_MODEL="C:\models\text-recognition.xml"
-$env:VISION_OCR_ALPHABET="0123456789abcdefghijklmnopqrstuvwxyz"
-```
+- **Command Prompt 1:** backend gRPC server.
+- **Command Prompt 2:** frontend Tauri app.
 
-### Verify backend
-```powershell
-python -m unittest discover -s backend/tests -v
-python -m backend.scripts.llm_planner_smoke
-python -m backend.scripts.llm_analysis_smoke
-python -m backend.scripts.report_smoke
-python -m backend.scripts.vision_smoke --video "test_folder/test_video.mp4"
-python -m backend.scripts.interview_demo_smoke --video "test_folder/test_video.mp4"
-```
+One-time setup from the repository root:
 
-### Quick end-to-end test
-
-From the repository root, install dependencies and prepare the local model once:
 ```powershell
 python -m pip install -r backend/requirements.txt
 ollama pull qwen2.5:3b
 python -m backend.scripts.setup_openvino_models
 ```
 
-Make sure Ollama is running, then start the backend:
+Make sure Ollama is running before starting the backend.
+
+Command Prompt 1, from the repository root:
+
 ```powershell
 python -m backend.main serve --address 127.0.0.1:50051
 ```
 
-Keep that terminal open. In a second terminal, start the desktop frontend:
+Keep Command Prompt 1 open.
+
+Command Prompt 2:
+
 ```powershell
 cd frontend
 npm install
 npm run tauri dev
 ```
 
-In the app:
-1. Select `test_folder/test_video.mp4`.
-2. Send `Summarize the video`.
-3. Send `What is the main point?`.
-4. Send `Create a PDF report with the key points`.
-5. Send `Generate a PowerPoint`.
-6. Confirm the PowerPoint reuses the latest report content without trying to read the PDF.
-7. Send `Summarize our discussion so far and generate a PDF`.
-8. Confirm both generated files appear and open from the files panel.
-
-The first uncached Ollama summary can still be slow on CPU. Repeated exports
-reuse the latest normalized content bundle and require no new LLM call.
-Generated PDF/PPTX files are outputs only and are never treated as evidence.
-
 For deterministic testing without Ollama analysis:
+
 ```powershell
 $env:PLANNER_BACKEND="heuristic"
 $env:ANALYSIS_BACKEND="rule_based"
 python -m backend.main serve --address 127.0.0.1:50051
 ```
 
-Stop the backend or frontend with `Ctrl+C`.
+## End-to-End Demo Test
 
-### Demo guide
+Use `test_folder/test_video.mp4` as the sample video.
 
-- **Input files:** [`test_folder/`](./test_folder/)
-- **Sample outputs:** [`backend/outputs/reports/`](./backend/outputs/reports/)
+Try these five queries:
 
-Generated PDF and PowerPoint files are written to `backend/outputs/reports/`.
-The folder is intentionally kept clean in git; run the prompts below to create
-fresh demo artifacts.
-
-Example queries for a full feature pass:
 ```txt
 What objects are shown in the video? Describe them.
-How many people are in the video?
 Read the on-screen text using OCR.
-Are there any charts or graphs in the video?
 Transcribe the video.
 Summarize the video.
-What are the key points shown in this video?
 Generate a PDF report with the key points from the video.
-Generate a PowerPoint from the latest report content.
-Summarize our discussion so far.
-Summarize our discussion so far and generate a PDF.
-Make a report.
 ```
 
-### Run frontend
-Start the backend first, then in another terminal:
-```powershell
-cd frontend
-npm install
-npm run tauri dev
-```
+Optional follow-up:
 
-See [`frontend/README.md`](./frontend/README.md) for architecture, verification,
-session persistence, endpoint configuration, and troubleshooting.
-
-## Example queries
 ```txt
-Transcribe the video.
-Summarize the video.
-What objects are shown in the video?
-Are there any graphs in the video?
-Create a PowerPoint with the key points.
-Summarize our discussion so far and generate a PDF.
-How many animals are in the video and export as PDF.
-Make a report.            # -> should ask a clarification
+Generate a PowerPoint from the latest report content.
 ```
 
-## Constraints
-- All AI inference runs **locally** (Whisper / OpenVINO / Ollama).
-- No cloud APIs, no public MCP servers, no vector DB, no LangChain/LangGraph, no real-time streaming.
-- Generated files are stored under `backend/outputs/`.
+## Sample Inputs and Generated Artifacts
+
+Sample inputs are stored in [`test_folder/`](./test_folder/).
+
+Generated PDFs and PowerPoints are written to
+[`backend/outputs/reports/`](./backend/outputs/reports/).
+
+Generated artifacts are local demo outputs and are not committed to the repo.
+Run the demo queries to recreate fresh files.
+
+## Verification
+
+```powershell
+python -m unittest discover -s backend/tests -v
+python -m backend.scripts.vision_smoke --video "test_folder/test_video.mp4"
+python -m backend.scripts.interview_demo_smoke --video "test_folder/test_video.mp4"
+```
+
+## Local-Only Constraints
+
+- No cloud APIs.
+- No frontend access to MCP servers.
+- The frontend talks to the backend through gRPC only.
+- Generated files remain local under `backend/outputs/reports/`.
