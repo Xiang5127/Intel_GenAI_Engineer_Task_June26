@@ -93,6 +93,10 @@ Known limitations:
 - Chart detection is heuristic, not a trained chart classifier.
 - There is no installer or packaged backend launcher yet.
 - The frontend resumes one active session; there is no session browser.
+- The assistant is task-focused for the MVP and does not behave like a general
+  greeting chatbot; the current priority is end-to-end function over polished UX.
+- Clarification behavior is supported for vague requests, but it is still an MVP
+  flow and may vary depending on session context and prior messages.
 
 With more time, the app could be extended with:
 
@@ -159,8 +163,12 @@ Summarize our discussion so far and generate a PDF report.
 ```
 
 You can also try other natural-language prompts. For example, try an ambiguous
-or vague request such as `Make a report` to see the LLM ask a clarification
-question before continuing through elicitation.
+or vague request such as `Hello` as the first message in a fresh session to see
+the app ask a clarification question before continuing through elicitation.
+
+## Elicitation Example
+
+![Vague request elicitation screenshot](./Demo%20-%20Vague%20Request.jpeg)
 
 ## Sample Inputs and Generated Artifacts
 
