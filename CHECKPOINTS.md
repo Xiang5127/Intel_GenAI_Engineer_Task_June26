@@ -224,3 +224,19 @@ All commands assume the repository root `e:\Intel Task` and that the `backend` p
   - `python -m backend.scripts.llm_analysis_smoke`
 - **Remaining limitation:** The first uncached local-Ollama analysis may still be
   slow on CPU. OpenVINO object detection/OCR will not reduce Ollama generation time.
+
+---
+
+## Phase 11 - Final Reliable MVP Vision Path
+- **Status:** Implemented
+- **Summary:** Added validated OpenVINO model configuration for SSD-style object
+  detection and OCR, explicit fallback/error metadata, OCR text deduplication,
+  stricter ffmpeg audio error handling, and an interview demo smoke flow.
+- **Env:** `VISION_DET_MODEL`, `VISION_DET_CONF`, `VISION_OCR_DET_MODEL`,
+  `VISION_OCR_REC_MODEL`, `VISION_OCR_ALPHABET`, `VISION_OCR_CONF`.
+- **Verification:**
+  - `python -m unittest discover -s backend/tests -v`
+  - `python -m backend.scripts.vision_smoke --video "test_folder/test_video.mp4"`
+  - `python -m backend.scripts.interview_demo_smoke --video "test_folder/test_video.mp4"`
+- **Note:** The OpenVINO-enabled smoke requires local IR `.xml/.bin` model files
+  supplied by env vars; model files are not committed to the repo.

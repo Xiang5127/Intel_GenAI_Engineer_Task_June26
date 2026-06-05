@@ -32,6 +32,23 @@ def _read(frame_path: str) -> "cv2.Mat":
     return img
 
 
+def _runtime_errors(rt: Any) -> list[str]:
+    return list(getattr(rt, "configuration_errors", []) or [])
+
+
+def _dedupe_text(texts: list[str]) -> str:
+    seen: set[str] = set()
+    lines: list[str] = []
+    for text in texts:
+        for raw_line in str(text or "").splitlines():
+            line = " ".join(raw_line.split())
+            key = line.casefold()
+            if line and key not in seen:
+                seen.add(key)
+                lines.append(line)
+    return "\n".join(lines)
+
+
 def detect_objects(frame_paths: list[str], conf: float = 0.5) -> dict[str, Any]:
     """Detect objects across frames; return per-frame + aggregate label counts."""
     rt = vision_runtime.get_runtime()
@@ -50,6 +67,7 @@ def detect_objects(frame_paths: list[str], conf: float = 0.5) -> dict[str, Any]:
     return {
         "backend": rt.backend,
         "detect_available": rt.detect_available,
+        "configuration_errors": _runtime_errors(rt),
         "frames_analyzed": len(per_frame),
         "label_counts": dict(totals),
         "frames": per_frame,
@@ -71,6 +89,7 @@ def count_objects(frame_paths: list[str], target: str, conf: float = 0.5) -> dic
     return {
         "backend": result["backend"],
         "detect_available": result["detect_available"],
+        "configuration_errors": result.get("configuration_errors", []),
         "target": target,
         "max_in_single_frame": max_in_frame,
         "total_detections": total,
@@ -94,8 +113,9 @@ def run_ocr(frame_paths: list[str]) -> dict[str, Any]:
     return {
         "backend": rt.backend,
         "ocr_available": rt.ocr_available,
+        "configuration_errors": _runtime_errors(rt),
         "frames_analyzed": len(per_frame),
-        "combined_text": "\n".join(t for t in texts if t).strip(),
+        "combined_text": _dedupe_text(texts),
         "frames": per_frame,
     }
 

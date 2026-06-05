@@ -2,7 +2,7 @@
 
 A **fully local, offline** AI desktop application for analyzing short `.mp4` videos through a chat interface. No cloud APIs, no public MCP servers, no vector DB.
 
-> **Current status:** The desktop frontend, local LLM analysis, and interaction-reliability milestone are implemented. The next major milestone is real OpenVINO object detection and OCR.
+> **Current status:** The desktop frontend, local LLM analysis, interaction reliability, and real OpenVINO vision integration are implemented. Run the model setup command below once to download the local IR model files.
 > - **[`HANDOFF_TO_CODEX.md`](./HANDOFF_TO_CODEX.md)** — architecture, how to run, gRPC/DB contracts, agents/MCP tools, constraints, and what to build next.
 > - **[`CHECKPOINTS.md`](./CHECKPOINTS.md)** — per-phase status, files touched, manual test steps, and known limitations.
 
@@ -11,7 +11,7 @@ A **fully local, offline** AI desktop application for analyzing short `.mp4` vid
 - Select a local `.mp4` video.
 - Ask natural-language questions about it.
 - Transcribe audio (local Whisper / faster-whisper).
-- Analyze sampled frames (objects / OCR / heuristic graph detection, OpenVINO where feasible).
+- Analyze sampled frames (OpenVINO object detection / OpenVINO OCR / heuristic graph detection).
 - Generate PDF and PowerPoint reports.
 - Persist chat history across restarts.
 
@@ -77,6 +77,7 @@ Local Tools / Models (ffmpeg/OpenCV, Whisper, OpenVINO, OCR, ReportLab/python-pp
 8. React + Tauri frontend. **Implemented.**
 9. Real local LLM analysis. **Implemented.**
 10. Interaction reliability and response speed. **Implemented.**
+11. Real OpenVINO object detection and OCR. **Implemented.**
 
 ## Setup
 
@@ -106,12 +107,33 @@ $env:ANALYSIS_TIMEOUT="120"       # defaults to OLLAMA_TIMEOUT
 $env:ANALYSIS_MAX_TOKENS="700"    # structured summary generation cap
 ```
 
+Optional OpenVINO vision models:
+```powershell
+python -m backend.scripts.setup_openvino_models
+```
+
+That downloads real local IR models into `backend/models/openvino/`, which the backend auto-discovers on startup:
+- Object detection: `ssdlite_mobilenet_v2_fp16`
+- OCR text detection: `horizontal-text-detection-0001`
+- OCR text recognition: `text-recognition-0012`
+
+Explicit overrides still work:
+```powershell
+$env:VISION_MODELS_DIR="E:\Intel Task\backend\models\openvino"
+$env:VISION_DET_MODEL="C:\models\object-detection.xml"
+$env:VISION_OCR_DET_MODEL="C:\models\text-detection.xml"
+$env:VISION_OCR_REC_MODEL="C:\models\text-recognition.xml"
+$env:VISION_OCR_ALPHABET="0123456789abcdefghijklmnopqrstuvwxyz"
+```
+
 ### Verify backend
 ```powershell
 python -m unittest discover -s backend/tests -v
 python -m backend.scripts.llm_planner_smoke
 python -m backend.scripts.llm_analysis_smoke
 python -m backend.scripts.report_smoke
+python -m backend.scripts.vision_smoke --video "test_folder/test_video.mp4"
+python -m backend.scripts.interview_demo_smoke --video "test_folder/test_video.mp4"
 ```
 
 ### Quick end-to-end test
@@ -120,6 +142,7 @@ From the repository root, install dependencies and prepare the local model once:
 ```powershell
 python -m pip install -r backend/requirements.txt
 ollama pull qwen2.5:3b
+python -m backend.scripts.setup_openvino_models
 ```
 
 Make sure Ollama is running, then start the backend:
@@ -156,6 +179,31 @@ python -m backend.main serve --address 127.0.0.1:50051
 ```
 
 Stop the backend or frontend with `Ctrl+C`.
+
+### Demo guide
+
+- **Input files:** [`test_folder/`](./test_folder/)
+- **Sample outputs:** [`backend/outputs/reports/`](./backend/outputs/reports/)
+
+Generated PDF and PowerPoint files are written to `backend/outputs/reports/`.
+The folder is intentionally kept clean in git; run the prompts below to create
+fresh demo artifacts.
+
+Example queries for a full feature pass:
+```txt
+What objects are shown in the video? Describe them.
+How many people are in the video?
+Read the on-screen text using OCR.
+Are there any charts or graphs in the video?
+Transcribe the video.
+Summarize the video.
+What are the key points shown in this video?
+Generate a PDF report with the key points from the video.
+Generate a PowerPoint from the latest report content.
+Summarize our discussion so far.
+Summarize our discussion so far and generate a PDF.
+Make a report.
+```
 
 ### Run frontend
 Start the backend first, then in another terminal:

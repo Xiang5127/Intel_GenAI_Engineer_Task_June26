@@ -5,7 +5,8 @@
 Extracts frames (video MCP) -> detect_objects / run_ocr / detect_graphs (vision
 MCP) -> persists objects/ocr/graphs/visual_summary. Works with the OpenCV
 fallback runtime (no detection model required); set VISION_DET_MODEL to enable
-real OpenVINO object detection.
+real OpenVINO object detection. Set VISION_OCR_DET_MODEL and
+VISION_OCR_REC_MODEL to enable OpenVINO OCR.
 """
 
 from __future__ import annotations
@@ -64,7 +65,13 @@ async def _run(db: Database, video_path: str) -> None:
     obj = result.data["objects"]
     log(f"  objects backend={obj['backend']} detect_available={obj['detect_available']} "
         f"labels={obj['label_counts']}")
-    log(f"  ocr available={result.data['ocr']['ocr_available']}")
+    if obj.get("configuration_errors"):
+        log(f"  object/model notes={obj['configuration_errors']}")
+    ocr = result.data["ocr"]
+    log(f"  ocr backend={ocr['backend']} available={ocr['ocr_available']} "
+        f"chars={len(ocr.get('combined_text') or '')}")
+    if ocr.get("configuration_errors"):
+        log(f"  ocr/model notes={ocr['configuration_errors']}")
     log(f"  graphs contains={result.data['graphs']['contains_graphs']} "
         f"({result.data['graphs']['graph_frame_count']}/{result.data['graphs']['frames_analyzed']})")
 

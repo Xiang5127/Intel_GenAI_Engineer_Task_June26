@@ -84,7 +84,7 @@ class VisionAgent(BaseAgent):
                 {"frame_paths": frame_paths, "target": target},
             )
 
-        summary = self._summarize(objects, ocr, graphs, data.get("count"))
+        summary = self._summarize(intent, objects, ocr, graphs, data.get("count"))
 
         # 3. Persist analyses.
         if video_id:
@@ -97,36 +97,58 @@ class VisionAgent(BaseAgent):
 
     @staticmethod
     def _summarize(
+        intent: str,
         objects: dict[str, Any],
         ocr: dict[str, Any],
         graphs: dict[str, Any],
         count: Any = None,
     ) -> str:
+        intent = str(intent or "")
         parts: list[str] = []
 
         counts = objects.get("label_counts") or {}
-        if counts:
+        if intent == "COUNT_OBJECTS" and count:
+            if objects.get("detect_available"):
+                parts.append(
+                    f"I found up to {count.get('max_in_single_frame')} "
+                    f"{count.get('target')} per sampled frame."
+                )
+            else:
+                parts.append(
+                    f"Object detection is not configured yet, so I cannot reliably "
+                    f"count {count.get('target')} in this video."
+                )
+        elif intent == "ANALYZE_OCR":
+            pass
+        elif counts:
             top = sorted(counts.items(), key=lambda kv: kv[1], reverse=True)[:5]
-            parts.append("Objects: " + ", ".join(f"{k}({v})" for k, v in top))
+            parts.append("Detected objects: " + ", ".join(f"{k} ({v})" for k, v in top))
         elif not objects.get("detect_available"):
-            parts.append(f"Objects: detection backend unavailable ({objects.get('backend')})")
+            parts.append(_object_unavailable_message())
         else:
-            parts.append("Objects: none detected")
+            parts.append("I did not detect recognizable objects in the sampled frames.")
 
-        if ocr.get("ocr_available"):
+        if intent == "ANALYZE_OCR":
+            if ocr.get("ocr_available"):
+                text = (ocr.get("combined_text") or "").strip()
+                parts.append(f"On-screen text: {text}" if text else "No on-screen text was detected.")
+            else:
+                parts.append("OCR is not configured yet, so I cannot read on-screen text reliably.")
+        elif ocr.get("ocr_available"):
             text = (ocr.get("combined_text") or "").strip()
-            parts.append(f"OCR: {len(text)} chars" if text else "OCR: no text found")
-        else:
-            parts.append("OCR: unavailable")
+            if text:
+                parts.append(f"On-screen text was also detected ({len(text)} characters).")
 
         if graphs.get("contains_graphs"):
-            parts.append(f"Charts: yes ({graphs.get('graph_frame_count')} frame(s))")
-        else:
-            parts.append("Charts: none")
-
-        if count:
-            parts.append(
-                f"Count[{count.get('target')}]: max {count.get('max_in_single_frame')} per frame"
-            )
+            parts.append(f"Chart-like visuals appear in {graphs.get('graph_frame_count')} sampled frame(s).")
+        elif intent == "DETECT_GRAPHS":
+            parts.append("I did not detect chart-like visuals in the sampled frames.")
 
         return " | ".join(parts)
+
+
+def _object_unavailable_message() -> str:
+    return (
+        "Object detection is not configured yet, so I cannot reliably describe "
+        "the objects in this video."
+    )

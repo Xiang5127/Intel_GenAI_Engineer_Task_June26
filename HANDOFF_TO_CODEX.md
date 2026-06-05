@@ -54,7 +54,9 @@ save user message -> build context -> deterministically route known workflows or
 
 ## 4. What Is Incomplete
 - **Frontend packaging/lifecycle:** the Python backend is started manually during development; automatic backend packaging and launch are deferred.
-- **Real vision models:** detection/OCR run in **fallback mode** (no IR model bundled). Set `VISION_DET_MODEL` + an OCR backend to enable.
+- **Vision model files:** detection/OCR use fallback mode until local OpenVINO IR
+  model paths are supplied via `VISION_DET_MODEL`, `VISION_OCR_DET_MODEL`, and
+  `VISION_OCR_REC_MODEL`.
 - **Local LLM latency:** the first uncached Ollama summary may still be slow on
   CPU. Common routing is immediate and repeated exports reuse cached content.
 - **Multi-turn clarification:** a pending question is persisted, but answers are re-planned fresh (no deep stitching).
@@ -154,8 +156,6 @@ Servers live in `backend/mcp_servers/` (FastMCP over stdio). Registered in `back
 ## 12. Recommended Next Work
 
 - Exercise the completed frontend against representative videos and planner flows.
-- Integrate required real OpenVINO object detection and OCR behind the existing
-  runtime/service/MCP/agent boundaries.
 - Add sample outputs and final submission documentation.
 
 ---

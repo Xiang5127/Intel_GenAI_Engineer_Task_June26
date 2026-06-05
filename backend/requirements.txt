@@ -20,8 +20,9 @@ faster-whisper==1.2.1       # local Whisper (CTranslate2); pulls 'av' for audio 
 # --- Phase 5: vision / OCR ---
 openvino==2026.2.0          # OpenVINO vision runtime (preferred); OpenCV fallback
 # numpy is pulled in by opencv-python
-# OCR: set VISION_DET_MODEL to an OpenVINO IR .xml to enable detection;
-# OCR backend optional (pytesseract/easyocr) can be added later.
+# One-time model setup: python -m backend.scripts.setup_openvino_models
+# Optional env overrides: VISION_MODELS_DIR, VISION_DET_MODEL,
+# VISION_OCR_DET_MODEL, VISION_OCR_REC_MODEL.
 
 # --- Phase 6: report generation ---
 reportlab==4.5.1            # PDF generation (no model, rule-based summary)

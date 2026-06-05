@@ -73,6 +73,20 @@ def _ffmpeg_exe() -> str:
     return imageio_ffmpeg.get_ffmpeg_exe()
 
 
+def _looks_like_no_audio(stderr: str) -> bool:
+    text = (stderr or "").lower()
+    return any(
+        marker in text
+        for marker in (
+            "does not contain any stream",
+            "no audio",
+            "matches no streams",
+            "stream specifier ':a'",
+            "output file #0 does not contain any stream",
+        )
+    )
+
+
 def extract_audio(
     video_path: str,
     output_dir: Optional[str] = None,
@@ -100,14 +114,13 @@ def extract_audio(
     ]
     proc = subprocess.run(cmd, capture_output=True, text=True)
 
-    if proc.returncode != 0 or not audio_path.exists() or audio_path.stat().st_size == 0:
-        stderr = (proc.stderr or "").lower()
-        if "does not contain any stream" in stderr or "no audio" in stderr:
+    audio_missing = not audio_path.exists() or audio_path.stat().st_size == 0
+    if proc.returncode != 0 or audio_missing:
+        stderr = (proc.stderr or "").strip()
+        if _looks_like_no_audio(stderr):
             return {"audio_path": None, "has_audio": False, "sample_rate": sample_rate}
-        # ffmpeg also exits non-zero when there's simply no audio stream mapped.
-        if not audio_path.exists() or audio_path.stat().st_size == 0:
-            return {"audio_path": None, "has_audio": False, "sample_rate": sample_rate}
-        raise VideoProcessingError(f"ffmpeg failed: {proc.stderr.strip()[:500]}")
+        detail = stderr[:500] or "ffmpeg produced no audio output"
+        raise VideoProcessingError(f"ffmpeg failed: {detail}")
 
     return {
         "audio_path": str(audio_path.resolve()),
